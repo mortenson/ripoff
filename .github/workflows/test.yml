@@ -1,0 +1,37 @@
+name: test
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15.3
+        env:
+          POSTGRES_DB: ripoff-test-db
+          POSTGRES_USER: ripoff
+          POSTGRES_PASSWORD: ripoff
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Run tests
+        run: go test .
+        env:
+          RIPOFF_TEST_DATABASE_URL: postgres://ripoff:ripoff@localhost/ripoff-test-db

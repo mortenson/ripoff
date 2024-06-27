@@ -1,0 +1,4 @@
+rows:
+  users:uuid(fooBar):
+    id: users:uuid(fooBar)
+    email: email(fooBar)

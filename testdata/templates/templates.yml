@@ -1,0 +1,6 @@
+rows:
+  users:uuid(fooBar):
+    template: template_user.yml
+    email: foobar@example.com
+    avatarUrl: image.png
+    avatarGrayscale: false
