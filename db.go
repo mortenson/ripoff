@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"reflect"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/brianvoe/gofakeit/v7"
@@ -40,25 +39,16 @@ func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((\S+)\)$`)
 var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:`)
 
-// Copied from gofakeit
+// Creates a map of functions from gofakeit using reflection.
+// Fairly gross, but the alternative is listing every "useful" function from them which seems worse.
 func fakerFuncs(f *gofakeit.Faker) map[string]func() string {
 	funcs := map[string]func() string{}
 
 	v := reflect.ValueOf(f)
-
-	templateExclusion := []string{
-		"RandomMapKey",
-		"SQL",
-		"Template",
-	}
-
 	for i := 0; i < v.NumMethod(); i++ {
-		if slices.Index(templateExclusion, v.Type().Method(i).Name) != -1 {
-			continue
-		}
-
-		// Verify that this is a method that takes a string and returns a string.
-		if v.Type().Method(i).Type.NumOut() != 1 || v.Type().Method(i).Type.NumIn() != 1 || v.Type().Method(i).Type.Out(0).String() != "string" {
+		methodType := v.Type().Method(i).Type
+		// Verify that this is a method that takes no args and returns a single string.
+		if methodType.NumOut() != 1 || methodType.NumIn() != 1 || methodType.Out(0).String() != "string" {
 			continue
 		}
 
@@ -68,20 +58,31 @@ func fakerFuncs(f *gofakeit.Faker) map[string]func() string {
 	return funcs
 }
 
+func uppercase(s string) string {
+	if len(s) < 2 {
+		return strings.ToUpper(s)
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 func prepareValue(rawValue string) (string, bool, error) {
 	valueFuncMatches := valueFuncRegex.FindStringSubmatch(rawValue)
 	if len(valueFuncMatches) != 3 {
 		return rawValue, false, nil
 	}
+	// Assume that if a valueFunc is prefixed with a table name, it's a primary/foreign key.
 	addEdge := referenceRegex.MatchString(rawValue)
-	kind := valueFuncMatches[1]
+	methodName := valueFuncMatches[1]
 	value := valueFuncMatches[2]
+
+	// Create a new random seed based on a sha256 hash of the value.
 	h := sha256.New()
 	h.Write([]byte(value))
 	hashBytes := h.Sum(nil)
 	randSeed := rand.New(rand.NewSource(int64(binary.BigEndian.Uint64(hashBytes))))
-	// It's one of ours.
-	switch kind {
+
+	// Check for methods provided by ripoff.
+	switch methodName {
 	case "uuid":
 		randomId, err := uuid.NewRandomFromReader(randSeed)
 		if err != nil {
@@ -94,16 +95,18 @@ func prepareValue(rawValue string) (string, bool, error) {
 		return value, addEdge, nil
 	}
 
+	// Check for methods provided by gofakeit.
 	faker := gofakeit.NewFaker(randSeed, true)
 	funcs := fakerFuncs(faker)
-	fakerFunc, funcExists := funcs[strings.ToUpper(kind[:1])+kind[1:]]
+	fakerFunc, funcExists := funcs[uppercase(methodName)]
 	if funcExists {
 		return fakerFunc(), addEdge, nil
 	}
 
-	return "", false, fmt.Errorf("Magic ID kind does not exist: %s(%s)", kind, value)
+	return "", false, fmt.Errorf("valueFunc does not exist: %s(%s)", methodName, value)
 }
 
+// Returns a sorted array of queries to run based on a given ripoff file.
 func buildQueriesForRipoff(totalRipoff RipoffFile) ([]string, error) {
 	dependencyGraph := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 	queries := map[string]string{}
@@ -128,8 +131,9 @@ func buildQueriesForRipoff(totalRipoff RipoffFile) ([]string, error) {
 		setStatements := []string{}
 		onConflictColumn := ""
 		for column, value := range row {
-			// Rows can explicitly mark what columns they should conflict with, in (hopefully rare) cases.
+			// Rows can explicitly mark what columns they should conflict with, in cases like composite primary keys.
 			if column == "~conflict" {
+				// Really novice way of escaping these.
 				columnParts := strings.Split(value, ",")
 				for i, columnPart := range columnParts {
 					columnParts[i] = pq.QuoteIdentifier(strings.TrimSpace(columnPart))
@@ -137,17 +141,20 @@ func buildQueriesForRipoff(totalRipoff RipoffFile) ([]string, error) {
 				onConflictColumn = strings.Join(columnParts, ", ")
 				continue
 			}
+			// This is a normal/real column.
 			columns = append(columns, pq.QuoteIdentifier(column))
 			valuePrepared, addEdge, err := prepareValue(value)
 			if err != nil {
 				return []string{}, err
 			}
+			// Don't add edges to and from the same row.
 			if addEdge && rowId != value {
 				err = dependencyGraph.AddEdge(rowId, value)
 				if err != nil {
 					return []string{}, err
 				}
 			}
+			// Assume this column is the primary key.
 			if rowId == value {
 				onConflictColumn = pq.QuoteIdentifier(column)
 			}
@@ -159,6 +166,7 @@ func buildQueriesForRipoff(totalRipoff RipoffFile) ([]string, error) {
 			return []string{}, fmt.Errorf("cannot determine column to conflict with for: %s", rowId)
 		}
 
+		// Extremely smart query builder.
 		query := fmt.Sprintf(
 			`INSERT INTO %s (%s)
 	VALUES (%s)
@@ -173,6 +181,7 @@ func buildQueriesForRipoff(totalRipoff RipoffFile) ([]string, error) {
 		queries[rowId] = query
 	}
 
+	// Sort and reverse the graph, so queries are in order of least (hopefully none) to most dependencies.
 	ordered, _ := graph.TopologicalSort(dependencyGraph)
 	sortedQueries := []string{}
 	for i := len(ordered) - 1; i >= 0; i-- {

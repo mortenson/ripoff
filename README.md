@@ -11,7 +11,7 @@ Some features of ripoff are:
 
 # Installation
 
-1. Run `go install github.com/mortenson/ripoff/cmd/ripoff@main`
+1. Run `go install github.com/mortenson/ripoff/cmd/ripoff@latest`
 2. Set the `DATABASE_URL` env variable to your local PostgreSQL database
 3. Run `ripoff <directory to your yaml files>`
 

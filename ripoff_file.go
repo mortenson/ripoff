@@ -21,6 +21,7 @@ type RipoffFile struct {
 }
 
 var funcMap = template.FuncMap{
+	// Convenient way to loop a set amount of times.
 	"intSlice": func(countStr string) []int {
 		countInt, err := strconv.Atoi(countStr)
 		if err != nil {
@@ -36,6 +37,7 @@ var funcMap = template.FuncMap{
 
 var templateFileRegex = regexp.MustCompile(`^template_(\S+)\.`)
 
+// Adds newRows to existingRows, processing templated rows when needed.
 func concatRows(templates *template.Template, existingRows map[string]Row, newRows map[string]Row) error {
 	for rowId, row := range newRows {
 		_, rowExists := existingRows[rowId]
@@ -72,6 +74,7 @@ func concatRows(templates *template.Template, existingRows map[string]Row, newRo
 	return nil
 }
 
+// Builds a single RipoffFile from a directory of yaml files.
 func RipoffFromDirectory(dir string) (RipoffFile, error) {
 	dir = path.Clean(dir)
 
