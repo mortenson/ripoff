@@ -9,6 +9,11 @@ import (
 // Calls a `func() string` shaped method in a given faker instance.
 func callFakerMethod(method string, faker *gofakeit.Faker) (string, error) {
 	switch method {
+	// Note: added these in for my own use, probably should let valueFuncs take multiple params
+	case "loremIpsumSentence":
+		return faker.LoremIpsumSentence(20), nil
+	case "loremIpsumParagraph":
+		return faker.LoremIpsumParagraph(1, 4, 20, ""), nil
 	case "achAccount":
 		return faker.AchAccount(), nil
 	case "achRouting":
@@ -55,7 +60,7 @@ func callFakerMethod(method string, faker *gofakeit.Faker) (string, error) {
 		return faker.AppName(), nil
 	case "appVersion":
 		return faker.AppVersion(), nil
-	case "bS":
+	case "bs":
 		return faker.BS(), nil
 	case "beerAlcohol":
 		return faker.BeerAlcohol(), nil
@@ -383,7 +388,7 @@ func callFakerMethod(method string, faker *gofakeit.Faker) (string, error) {
 		return faker.Question(), nil
 	case "quote":
 		return faker.Quote(), nil
-	case "sSN":
+	case "ssn":
 		return faker.SSN(), nil
 	case "safariUserAgent":
 		return faker.SafariUserAgent(), nil
@@ -419,10 +424,8 @@ func callFakerMethod(method string, faker *gofakeit.Faker) (string, error) {
 		return faker.TimeZoneFull(), nil
 	case "timeZoneRegion":
 		return faker.TimeZoneRegion(), nil
-	case "uRL":
+	case "url":
 		return faker.URL(), nil
-	case "uUID":
-		return faker.UUID(), nil
 	case "userAgent":
 		return faker.UserAgent(), nil
 	case "username":
