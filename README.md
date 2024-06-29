@@ -38,7 +38,7 @@ rows:
     user_id: users:uuid(fooBar)
   users:uuid(randomUser):
     id: users:uuid(randomUser)
-    # A number of random generation functions are available outside of the context of
+    # A number of other random generation functions are available for use.
     email: email(randomUser)
 ```
 
@@ -46,7 +46,7 @@ For more (sometimes wildly complex) examples, see `./testdata`.
 
 ## More on valueFuncs and row keys
 
-valueFuncs allow you to generate random data that's seeded with a static string. This ensures that repeat runs of ripoff are deterministic, which enables upserts (consistent primary keys). If they appear anywhere in a 
+valueFuncs allow you to generate random data that's seeded with a static string. This ensures that repeat runs of ripoff are deterministic, which enables upserts (consistent primary keys).
 
 ripoff provides:
 
@@ -93,7 +93,7 @@ rows:
 
 ## Explicitly defining primary keys
 
-ripoff will try to determine the primary key for your row by matching the row ID with a single column (see "Basic example" above). However if you use composite keys, or your primary key is a foreign key to another table (see ./testdata/dependencies), this may not be possible. In these cases you can manually define primary keys using `~conflict: column_1, column_2, ...`.
+ripoff will try to determine the primary key for your row by matching the row ID with a single column (see "Basic example" above). However if you use composite keys, or your primary key is a foreign key to another table (see `./testdata/dependencies`), this may not be possible. In these cases you can manually define primary keys using `~conflict: column_1, column_2, ...`.
 
 # Security
 
@@ -108,7 +108,7 @@ Fake data generators generally come in two flavors:
 
 I find generating fake data to be a completely separate use case from "normal" ORM usage, and truly randomized fake data is awkward to use locally.
 
-So ripoff is my approach to fake (but not excessively random) data generation. Because it's not aware of your application or schema, it's closer to writing templated SQL than learning some crazy high level DSL. There are awkward bits (everything is a string) but it's holding up OK for
+So ripoff is my approach to fake (but not excessively random) data generation. Since it's not aware of your application or schema, it's closer to writing templated SQL than learning some crazy high level DSL.
 
 # FAQ
 
