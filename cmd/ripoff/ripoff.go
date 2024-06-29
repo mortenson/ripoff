@@ -58,7 +58,7 @@ func main() {
 	}
 	defer func() {
 		err = tx.Rollback(ctx)
-		if err != pgx.ErrTxClosed {
+		if err != nil && err != pgx.ErrTxClosed {
 			slog.Error("Could not rollback transaction", errAttr(err))
 			os.Exit(1)
 		}
