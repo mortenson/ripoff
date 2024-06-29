@@ -6,7 +6,6 @@ Some features of ripoff are:
 
 - Model your fake data in one or more yaml files, god's favorite file format
 - Provide templated yaml files in cases where a row in one table requires many other rows, or you want loops
-- Ability to resolve dependencies (foreign keys) between generated rows, always running queries "in order"
 - Due to deterministic random generation, re-running ripoff will perform upserts on all generated rows
 
 # Installation
@@ -38,7 +37,7 @@ rows:
     user_id: users:uuid(fooBar)
   users:uuid(randomUser):
     id: users:uuid(randomUser)
-    # A number of other random generation functions are available for use.
+    # Generate a random email with the seed "randomUser"
     email: email(randomUser)
 ```
 
