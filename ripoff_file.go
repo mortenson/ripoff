@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -22,16 +21,16 @@ type RipoffFile struct {
 
 var funcMap = template.FuncMap{
 	// Convenient way to loop a set amount of times.
-	"intSlice": func(countStr string) []int {
+	"intSlice": func(countStr string) ([]int, error) {
 		countInt, err := strconv.Atoi(countStr)
 		if err != nil {
-			panic(err)
+			return []int{}, err
 		}
 		ret := make([]int, countInt)
 		for i := range ret {
 			ret[i] = i
 		}
-		return ret
+		return ret, nil
 	},
 }
 
@@ -76,11 +75,11 @@ func concatRows(templates *template.Template, existingRows map[string]Row, newRo
 
 // Builds a single RipoffFile from a directory of yaml files.
 func RipoffFromDirectory(dir string) (RipoffFile, error) {
-	dir = path.Clean(dir)
+	dir = filepath.Clean(dir)
 
 	// Treat files starting with template_ as go templates.
 	templates := template.New("").Option("missingkey=error").Funcs(funcMap)
-	_, err := templates.ParseGlob(path.Join(dir, "template_*"))
+	_, err := templates.ParseGlob(filepath.Join(dir, "template_*"))
 	if err != nil && !strings.Contains(err.Error(), "template: pattern matches no files") {
 		return RipoffFile{}, err
 	}

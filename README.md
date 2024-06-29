@@ -24,7 +24,8 @@ ripoffs define rows to be inserted into your database. Any number of ripoffs can
 ## Basic example
 
 ```yaml
-# A map of rows to upsert, where keys are in the format <table_name>:<valueFunc>(<identifier or seed>), and values are maps of column names to values.
+# A map of rows to upsert, where keys are in the format <table_name>:<valueFunc>(<seed>),
+# and values are maps of column names to values.
 rows:
   # A "users" table row identified with a UUID generated with the seed "fooBar"
   users:uuid(fooBar):
@@ -35,6 +36,10 @@ rows:
     id: avatars:uuid(fooBarAvatar)
     # ripoff will see this and insert the "users:uuid(fooBar)" row before this row
     user_id: users:uuid(fooBar)
+  users:uuid(randomUser):
+    id: users:uuid(randomUser)
+    # A number of random generation functions are available outside of the context of
+    email: email(randomUser)
 ```
 
 For more (sometimes wildly complex) examples, see `./testdata`.
@@ -49,7 +54,7 @@ ripoff provides:
 - `int(seedString)` - generates an integer (note: might be awkward on auto incrementing tables)
 - `literal(someId)` - returns "someId" exactly. useful if you want to hard code UUIDs/ints
 
-and also all functions from [gofakeit](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions) that have no arguments and return a string (called in camelcase, ex: `email(seedString)`).
+and also all functions from [gofakeit](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions) that have no arguments and return a string (called in camelcase, ex: `email(seedString)`). For the full list, see `./gofakeit.go`.
 
 ## Using templates
 
@@ -59,10 +64,12 @@ Yaml files that start with `template_` will be treated as Go templates. Here's a
 
 ```yaml
 rows:
-  # "rowId" is the id/key of the row that rendered this template. All other variables are arbitrarily provided.
+  # "rowId" is the id/key of the row that rendered this template.
+  # You could also pass an explicit seed and use it like `users:uuid({{ .seed }})`
   {{ .rowId }}:
     id: {{ .rowId }}
     email: {{ .email }}
+    # It's convenient to use the rowId as a seed to other valueFuncs.
     avatar_id: avatars:uuid({{ .rowId }})
   avatars:uuid({{ .rowId }}):
     id: avatars:uuid({{ .rowId }})
