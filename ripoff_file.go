@@ -6,14 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"text/template"
 
 	"gopkg.in/yaml.v3"
 )
 
-type Row map[string]string
+type Row map[string]interface{}
 
 type RipoffFile struct {
 	Rows map[string]Row `yaml:"rows"`
@@ -21,12 +20,8 @@ type RipoffFile struct {
 
 var funcMap = template.FuncMap{
 	// Convenient way to loop a set amount of times.
-	"intSlice": func(countStr string) ([]int, error) {
-		countInt, err := strconv.Atoi(countStr)
-		if err != nil {
-			return []int{}, err
-		}
-		ret := make([]int, countInt)
+	"intSlice": func(count int) ([]int, error) {
+		ret := make([]int, count)
 		for i := range ret {
 			ret[i] = i
 		}
@@ -43,7 +38,7 @@ func concatRows(templates *template.Template, existingRows map[string]Row, newRo
 		if rowExists {
 			return fmt.Errorf("row %s is defined more than once", rowId)
 		}
-		templateName, usesTemplate := row["template"]
+		templateName, usesTemplate := row["template"].(string)
 		if usesTemplate {
 			// "rowId" allows dependencies between templated rows to be clear outside of the template.
 			// Templates can additionally use it to seed random generators.

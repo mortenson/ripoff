@@ -87,7 +87,11 @@ func buildQueryForRow(rowId string, row Row, dependencyGraph graph.Graph[string,
 	values := []string{}
 	setStatements := []string{}
 	onConflictColumn := ""
-	for column, value := range row {
+	for column, valueRaw := range row {
+		// Technically we allow more than strings in ripoff files for templating purposes,
+		// but full support (ex: escaping arrays, what to do with maps, etc.) is quite hard so tabling that for now.
+		value := fmt.Sprint(valueRaw)
+
 		// Rows can explicitly mark what columns they should conflict with, in cases like composite primary keys.
 		if column == "~conflict" {
 			// Really novice way of escaping these.

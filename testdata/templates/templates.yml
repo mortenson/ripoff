@@ -4,3 +4,12 @@ rows:
     email: foobar@example.com
     avatarUrl: image.png
     avatarGrayscale: false
+  # Templates actually end up replacing the row, so if you don't use rowId in
+  # the template you can get away with using other variables as seeds.
+  bulk_users:
+    template: template_users.yml
+    users:
+      a@example.com: a.png
+      b@example.com: b.png
+      c@example.com: c.png
+      d@example.com: d.png
