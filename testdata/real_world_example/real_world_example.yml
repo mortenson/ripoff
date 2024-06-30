@@ -1,0 +1,40 @@
+rows:
+  # It's useful to define users at a top level, but you could have
+  # "one template to rule them all" and create them inline with orgs/workspaces instead.
+  users:uuid(noWorkspace):
+    template: template_user.yml
+    id: users:uuid(noWorkspace)
+    email: no+workspace@example.com
+    name: No Workspace
+  users:uuid(samMortenson):
+    template: template_user.yml
+    id: users:uuid(samMortenson)
+    email: sam+mortenson@example.com
+    name: Sam Mortenson
+  users:uuid(aliceBurger):
+    template: template_user.yml
+    id: users:uuid(aliceBurger)
+    email: alice+burger@example.com
+    name: Alice Burger
+  users:uuid(bobTaco):
+    template: template_user.yml
+    id: users:uuid(bobTaco)
+    email: bob+taco@example.com
+    name: Bob Taco
+  # This template creates rows in four tables without being verbose.
+  workspaces:uuid(myOrgInc):
+    template: template_workspace.yml
+    slug: myOrgInc
+    name: My Org, Inc.
+    members:
+      - users:uuid(samMortenson)
+      - users:uuid(aliceBurger)
+      - users:uuid(bobTaco)
+    groups:
+      - name: Admins
+        members:
+        - users:uuid(samMortenson)
+      - name: Developers
+        members:
+        - users:uuid(aliceBurger)
+        - users:uuid(bobTaco)

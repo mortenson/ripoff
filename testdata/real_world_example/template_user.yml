@@ -1,0 +1,6 @@
+rows:
+  {{ .rowId }}:
+    id: {{ .rowId }}
+    email: {{ .email }}
+    avatar_url: /assets/static/default_avatar.jpg
+    name: {{ .name }}

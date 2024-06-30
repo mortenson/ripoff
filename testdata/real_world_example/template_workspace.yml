@@ -1,0 +1,31 @@
+rows:
+  # While I still like using "rowId" this way, it can be confusing at a glance.
+  # The caller should hopefully be using a row key like workspaces:uuid(...)
+  {{ .rowId }}:
+    id: {{ .rowId }}
+    slug: {{ .slug }}
+    name: {{ .name }}
+  # $user_id is a reference to a row created outside this template, ex: users:uuid(...)
+  {{ range $user_id := .members }}
+  workspace_memberships:uuid({{ print $.slug $user_id }}):
+    ~conflict: user_id, workspace_id
+    user_id: {{ $user_id }}
+    workspace_id: {{ $.rowId }}
+  {{ end }}
+  # Create user groups.
+  {{ range $group := .groups }}
+  # While most schemas allow duplicate UUIDs in different tables, it can make
+  # debugging hard, so I concat some things that are probably unique to use as a seed.
+  groups:uuid({{ print $.slug $group.name }}):
+    id: groups:uuid({{ print $.slug $group.name }})
+    name: {{ $group.name }}
+    description: loremIpsumSentence({{ print $.slug $group.name }})
+    workspace_id: {{ $.rowId }}
+  # Create memberships to those groups.
+  {{ range $user_id := $group.members }}
+  group_memberships:uuid({{ print $.slug $group.name $user_id }}):
+    id: group_memberships:uuid({{ print $.slug $group.name $user_id }})
+    user_id: {{ $user_id }}
+    group_id: groups:uuid({{ print $.slug $group.name }})
+  {{ end }}
+  {{ end }}
