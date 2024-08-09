@@ -35,7 +35,7 @@ func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
 	return nil
 }
 
-var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((\S+)\)$`)
+var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)
 var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:`)
 
 func prepareValue(rawValue string) (string, error) {
@@ -127,7 +127,7 @@ func buildQueryForRow(rowId string, row Row, dependencyGraph graph.Graph[string,
 	}
 
 	if onConflictColumn == "" {
-		return "", fmt.Errorf("cannot determine column to conflict with for: %s", rowId)
+		return "", fmt.Errorf("cannot determine column to conflict with for: %s, saw %s", rowId, row)
 	}
 
 	// Extremely smart query builder.
