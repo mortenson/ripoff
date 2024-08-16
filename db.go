@@ -19,7 +19,12 @@ import (
 
 // Runs ripoff from start to finish, without committing the transaction.
 func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
-	queries, err := buildQueriesForRipoff(totalRipoff)
+	primaryKeys, err := getPrimaryKeys(ctx, tx)
+	if err != nil {
+		return err
+	}
+
+	queries, err := buildQueriesForRipoff(primaryKeys, totalRipoff)
 	if err != nil {
 		return err
 	}
@@ -33,6 +38,39 @@ func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
 	}
 
 	return nil
+}
+
+const primaryKeysQuery = `
+SELECT STRING_AGG(c.column_name, '|'), tc.table_name
+FROM information_schema.table_constraints tc 
+JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) 
+JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
+  AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
+WHERE constraint_type = 'PRIMARY KEY'
+GROUP BY tc.table_name;
+`
+
+type PrimaryKeysResult map[string][]string
+
+func getPrimaryKeys(ctx context.Context, tx pgx.Tx) (PrimaryKeysResult, error) {
+	rows, err := tx.Query(ctx, primaryKeysQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	allPrimaryKeys := PrimaryKeysResult{}
+
+	for rows.Next() {
+		var primaryKeys string
+		var tableName string
+		err = rows.Scan(&primaryKeys, &tableName)
+		if err != nil {
+			return nil, err
+		}
+		allPrimaryKeys[tableName] = strings.Split(primaryKeys, "|")
+	}
+	return allPrimaryKeys, nil
 }
 
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)
@@ -76,32 +114,44 @@ func prepareValue(rawValue string) (string, error) {
 	return fakerResult, nil
 }
 
-func buildQueryForRow(rowId string, row Row, dependencyGraph graph.Graph[string, string]) (string, error) {
+func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, dependencyGraph graph.Graph[string, string]) (string, error) {
 	parts := strings.Split(rowId, ":")
 	if len(parts) < 2 {
 		return "", fmt.Errorf("invalid id: %s", rowId)
 	}
 	table := parts[0]
+	primaryKeysForTable, hasPrimaryKeysForTable := primaryKeys[table]
 
 	columns := []string{}
 	values := []string{}
 	setStatements := []string{}
+
 	onConflictColumn := ""
+	if hasPrimaryKeysForTable {
+		quotedKeys := make([]string, len(primaryKeysForTable))
+		for i, columnPart := range primaryKeysForTable {
+			quotedKeys[i] = pq.QuoteIdentifier(strings.TrimSpace(columnPart))
+		}
+		onConflictColumn = strings.Join(quotedKeys, ", ")
+		// For UX reasons, you don't have to define primary key columns (ex: id), since we have the map key already.
+		if len(primaryKeysForTable) == 1 {
+			column := primaryKeysForTable[0]
+			_, hasPrimaryColumn := row[column]
+			if !hasPrimaryColumn {
+				row[column] = rowId
+			}
+		}
+	}
+
 	for column, valueRaw := range row {
+		// Backwards compatability weirdness.
+		if column == "~conflict" {
+			continue
+		}
+
 		// Technically we allow more than strings in ripoff files for templating purposes,
 		// but full support (ex: escaping arrays, what to do with maps, etc.) is quite hard so tabling that for now.
 		value := fmt.Sprint(valueRaw)
-
-		// Rows can explicitly mark what columns they should conflict with, in cases like composite primary keys.
-		if column == "~conflict" {
-			// Really novice way of escaping these.
-			columnParts := strings.Split(value, ",")
-			for i, columnPart := range columnParts {
-				columnParts[i] = pq.QuoteIdentifier(strings.TrimSpace(columnPart))
-			}
-			onConflictColumn = strings.Join(columnParts, ", ")
-			continue
-		}
 
 		// Assume that if a valueFunc is prefixed with a table name, it's a primary/foreign key.
 		addEdge := referenceRegex.MatchString(value)
@@ -119,7 +169,7 @@ func buildQueryForRow(rowId string, row Row, dependencyGraph graph.Graph[string,
 			return "", err
 		}
 		// Assume this column is the primary key.
-		if rowId == value {
+		if rowId == value && onConflictColumn == "" {
 			onConflictColumn = pq.QuoteIdentifier(column)
 		}
 		values = append(values, pq.QuoteLiteral(valuePrepared))
@@ -145,7 +195,7 @@ func buildQueryForRow(rowId string, row Row, dependencyGraph graph.Graph[string,
 }
 
 // Returns a sorted array of queries to run based on a given ripoff file.
-func buildQueriesForRipoff(totalRipoff RipoffFile) ([]string, error) {
+func buildQueriesForRipoff(primaryKeys PrimaryKeysResult, totalRipoff RipoffFile) ([]string, error) {
 	dependencyGraph := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
 	queries := map[string]string{}
 
@@ -159,7 +209,7 @@ func buildQueriesForRipoff(totalRipoff RipoffFile) ([]string, error) {
 
 	// Build queries.
 	for rowId, row := range totalRipoff.Rows {
-		query, err := buildQueryForRow(rowId, row, dependencyGraph)
+		query, err := buildQueryForRow(primaryKeys, rowId, row, dependencyGraph)
 		if err != nil {
 			return []string{}, err
 		}

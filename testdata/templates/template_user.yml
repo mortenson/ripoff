@@ -1,12 +1,9 @@
 rows:
   {{ .rowId }}:
-    id: {{ .rowId }}
     email: {{ .email }}
     avatar_id: avatars:uuid({{ .rowId }})
   avatars:uuid({{ .rowId }}):
-    id: avatars:uuid({{ .rowId }})
     url: {{ .avatarUrl }}
   avatar_modifiers:uuid({{ .rowId }}):
     ~conflict: id
-    id: avatars:uuid({{ .rowId }})
     grayscale: {{ .avatarGrayscale }}

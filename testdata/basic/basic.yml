@@ -1,10 +1,7 @@
 rows:
   uuid_users:uuid(fooBar):
-    id: uuid_users:uuid(fooBar)
     email: foobar@example.com
   int_users:int(fooBar):
-    id: int_users:int(fooBar)
     email: foobar@example.com
   uuid_users:literal(bbb2ddaa-f33a-4b85-96e7-96d77a194b61):
-    id: uuid_users:literal(bbb2ddaa-f33a-4b85-96e7-96d77a194b61)
     email: foobar@example.com
