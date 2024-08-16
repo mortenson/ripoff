@@ -47,9 +47,8 @@ valueFuncs allow you to generate random data that's seeded with a static string.
 
 ripoff provides:
 
-- `uuid(seedString)` - generates a UUIDv4
+- `uuid(seedString)` - generates a v1 UUID
 - `int(seedString)` - generates an integer (note: might be awkward on auto incrementing tables)
-- `literal(someId)` - returns "someId" exactly. useful if you want to hard code UUIDs/ints
 
 and also all functions from [gofakeit](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions) that have no arguments and return a string (called in camelcase, ex: `email(seedString)`). For the full list, see `./gofakeit.go`.
 
