@@ -1,10 +1,8 @@
 rows:
   {{ range $email, $avatarUrl := .users }}
   users:uuid({{ $email }}):
-    id: users:uuid({{ $email }})
     email: {{ $email }}
     avatar_id: avatars:uuid({{ $avatarUrl }})
   avatars:uuid({{ $avatarUrl }}):
-    id: avatars:uuid({{ $avatarUrl }})
     url: {{ $avatarUrl }}
   {{ end }}

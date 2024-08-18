@@ -1,16 +1,12 @@
 rows:
   users:uuid(fooBar):
-    id: users:uuid(fooBar)
     email: foobar@example.com
   workspaces:uuid(fooBarOrg):
-    id: workspaces:uuid(fooBarOrg)
     name: Foo Bar Inc.
   workspace_users:uuid(fooBarWorkspaceUser):
-    ~conflict: user_id, workspace_id
     user_id: users:uuid(fooBar)
     workspace_id: workspaces:uuid(fooBarOrg)
   workspace_user_permissions:uuid(fooBarWorkspaceUserPermission):
-    ~conflict: user_id, workspace_id
     user_id: users:uuid(fooBar)
     workspace_id: workspaces:uuid(fooBarOrg)
     is_admin: true

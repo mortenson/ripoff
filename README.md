@@ -28,15 +28,13 @@ ripoffs define rows to be inserted into your database. Any number of ripoffs can
 rows:
   # A "users" table row identified with a UUID generated with the seed "fooBar"
   users:uuid(fooBar):
-    # Using the map key here implicitly informs ripoff that "id" is the primary key of the table
-    id: users:uuid(fooBar)
     email: foobar@example.com
+    # Note that ripoff will automatically set primary key columns, so you don't need to add:
+    # id: users:uuid(fooBar)
   avatars:uuid(fooBarAvatar):
-    id: avatars:uuid(fooBarAvatar)
     # ripoff will see this and insert the "users:uuid(fooBar)" row before this row
     user_id: users:uuid(fooBar)
   users:uuid(randomUser):
-    id: users:uuid(randomUser)
     # Generate a random email with the seed "randomUser"
     email: email(randomUser)
 ```
@@ -49,9 +47,8 @@ valueFuncs allow you to generate random data that's seeded with a static string.
 
 ripoff provides:
 
-- `uuid(seedString)` - generates a UUIDv4
+- `uuid(seedString)` - generates a v1 UUID
 - `int(seedString)` - generates an integer (note: might be awkward on auto incrementing tables)
-- `literal(someId)` - returns "someId" exactly. useful if you want to hard code UUIDs/ints
 
 and also all functions from [gofakeit](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions) that have no arguments and return a string (called in camelcase, ex: `email(seedString)`). For the full list, see `./gofakeit.go`.
 
@@ -66,12 +63,10 @@ rows:
   # "rowId" is the id/key of the row that rendered this template.
   # You could also pass an explicit seed and use it like `users:uuid({{ .seed }})`
   {{ .rowId }}:
-    id: {{ .rowId }}
     email: {{ .email }}
     # It's convenient to use the rowId as a seed to other valueFuncs.
     avatar_id: avatars:uuid({{ .rowId }})
   avatars:uuid({{ .rowId }}):
-    id: avatars:uuid({{ .rowId }})
     url: {{ .avatarUrl }}
 ```
 
@@ -90,9 +85,10 @@ rows:
     avatarGrayscale: false
 ```
 
-## Explicitly defining primary keys
+### Special template variables
 
-ripoff will try to determine the primary key for your row by matching the row ID with a single column (see "Basic example" above). However if you use composite keys, or your primary key is a foreign key to another table (see `./testdata/dependencies`), this may not be possible. In these cases you can manually define primary keys using `~conflict: column_1, column_2, ...`.
+- `rowID` - The map key of the row using this template, ex `users:uuid(fooBar)`. Useful for allowing the "caller" to provide their own ID for the "main" row being created, if there is one. Optional to use if you find it awkward.
+- `enums` - A map of SQL enums names to an array of enum values. Useful for creating one row for each value of an enum (ex: each user role).
 
 # Security
 

@@ -1,12 +1,8 @@
 rows:
   users:uuid(fooBar):
-    id: users:uuid(fooBar)
     email: foobar@example.com
     avatar_id: avatars:uuid(fooBarAvatar)
   avatars:uuid(fooBarAvatar):
-    id: avatars:uuid(fooBarAvatar)
     url: image.png
   avatar_modifiers:uuid(fooBarAvatar):
-    ~conflict: id
-    id: avatars:uuid(fooBarAvatar)
     grayscale: true

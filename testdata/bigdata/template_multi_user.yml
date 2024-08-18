@@ -1,6 +1,5 @@
 rows:
   {{ range $k, $v := (intSlice .numUsers) }}
   users:uuid({{ print $.rowId $k }}):
-    id: users:uuid({{ print $.rowId $k }})
     email: multi-user-{{ $k }}@example.com
   {{ end }}
