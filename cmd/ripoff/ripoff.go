@@ -36,13 +36,8 @@ func main() {
 		slog.Error("Path to YAML files required")
 		os.Exit(1)
 	}
-	rootDirectory := path.Clean(flag.Arg(0))
-	totalRipoff, err := ripoff.RipoffFromDirectory(rootDirectory)
-	if err != nil {
-		slog.Error("Could not load ripoff", errAttr(err))
-		os.Exit(1)
-	}
 
+	// Start database transaction.
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, dburl)
 	if err != nil {
@@ -63,6 +58,19 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	enums, err := ripoff.GetEnumValues(ctx, tx)
+	if err != nil {
+		slog.Error("Could not load enums", errAttr(err))
+		os.Exit(1)
+	}
+
+	rootDirectory := path.Clean(flag.Arg(0))
+	totalRipoff, err := ripoff.RipoffFromDirectory(rootDirectory, enums)
+	if err != nil {
+		slog.Error("Could not load ripoff", errAttr(err))
+		os.Exit(1)
+	}
 
 	err = ripoff.RunRipoff(ctx, tx, totalRipoff)
 	if err != nil {

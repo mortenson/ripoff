@@ -1,0 +1,4 @@
+rows:
+  workspaces:uuid(myWorkspace):
+    template: template_workspace.yml
+    slug: mySlug

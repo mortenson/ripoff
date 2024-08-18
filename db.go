@@ -47,6 +47,7 @@ JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema,
 JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
   AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
 WHERE constraint_type = 'PRIMARY KEY'
+AND tc.table_schema = 'public'
 GROUP BY tc.table_name;
 `
 
@@ -71,6 +72,38 @@ func getPrimaryKeys(ctx context.Context, tx pgx.Tx) (PrimaryKeysResult, error) {
 		allPrimaryKeys[tableName] = strings.Split(primaryKeys, "|")
 	}
 	return allPrimaryKeys, nil
+}
+
+const enumValuesQuery = `
+SELECT STRING_AGG(e.enumlabel, '|'), t.typname
+FROM pg_type t
+JOIN pg_enum e ON t.oid = e.enumtypid  
+JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+WHERE n.nspname = 'public'
+GROUP BY t.typname;
+`
+
+type EnumValuesResult map[string][]string
+
+func GetEnumValues(ctx context.Context, tx pgx.Tx) (EnumValuesResult, error) {
+	rows, err := tx.Query(ctx, enumValuesQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	allEnumValues := EnumValuesResult{}
+
+	for rows.Next() {
+		var primaryKeys string
+		var tableName string
+		err = rows.Scan(&primaryKeys, &tableName)
+		if err != nil {
+			return nil, err
+		}
+		allEnumValues[tableName] = strings.Split(primaryKeys, "|")
+	}
+	return allEnumValues, nil
 }
 
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)

@@ -1,0 +1,14 @@
+rows:
+  {{ .rowId }}:
+    slug: {{ .slug }}
+  # Create a user for every possible role.
+  # "enums" is a map of SQL enums names to an array of enum values.
+  {{ range $user_role := .enums.user_role }}
+  users:uuid({{ print $.rowId $user_role }}):
+    # ex: myWorkspace+admin@example.com
+    email: "{{ $.slug }}+{{ $user_role }}@example.com"
+    role: {{ $user_role }}
+  workspace_memberships:uuid({{ print $.rowId $user_role }}):
+    user_id: users:uuid({{ print $.rowId $user_role }})
+    workspace_id: {{ $.rowId }}
+  {{ end }}

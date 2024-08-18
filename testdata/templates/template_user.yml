@@ -5,5 +5,4 @@ rows:
   avatars:uuid({{ .rowId }}):
     url: {{ .avatarUrl }}
   avatar_modifiers:uuid({{ .rowId }}):
-    ~conflict: id
     grayscale: {{ .avatarGrayscale }}

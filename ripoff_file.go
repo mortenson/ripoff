@@ -32,7 +32,7 @@ var funcMap = template.FuncMap{
 var templateFileRegex = regexp.MustCompile(`^template_(\S+)\.`)
 
 // Adds newRows to existingRows, processing templated rows when needed.
-func concatRows(templates *template.Template, existingRows map[string]Row, newRows map[string]Row) error {
+func concatRows(templates *template.Template, existingRows map[string]Row, newRows map[string]Row, enums EnumValuesResult) error {
 	for rowId, row := range newRows {
 		_, rowExists := existingRows[rowId]
 		if rowExists {
@@ -44,6 +44,7 @@ func concatRows(templates *template.Template, existingRows map[string]Row, newRo
 			// Templates can additionally use it to seed random generators.
 			templateVars := row
 			templateVars["rowId"] = rowId
+			templateVars["enums"] = enums
 			buf := &bytes.Buffer{}
 			err := templates.ExecuteTemplate(buf, templateName, templateVars)
 			if err != nil {
@@ -69,7 +70,7 @@ func concatRows(templates *template.Template, existingRows map[string]Row, newRo
 }
 
 // Builds a single RipoffFile from a directory of yaml files.
-func RipoffFromDirectory(dir string) (RipoffFile, error) {
+func RipoffFromDirectory(dir string, enums EnumValuesResult) (RipoffFile, error) {
 	dir = filepath.Clean(dir)
 
 	// Treat files starting with template_ as go templates.
@@ -116,7 +117,7 @@ func RipoffFromDirectory(dir string) (RipoffFile, error) {
 	}
 
 	for _, ripoff := range allRipoffs {
-		err = concatRows(templates, totalRipoff.Rows, ripoff.Rows)
+		err = concatRows(templates, totalRipoff.Rows, ripoff.Rows, enums)
 		if err != nil {
 			return RipoffFile{}, err
 		}
