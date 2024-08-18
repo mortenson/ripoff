@@ -87,7 +87,7 @@ rows:
 
 ### Special template variables
 
-- `rowID` - The map key of the row using this template, ex `users:uuid(fooBar)`. Useful for allowing the "caller" to provide their own ID for the "main" row being created, if there is one. Optional to use if you find it awkward.
+- `rowId` - The map key of the row using this template, ex `users:uuid(fooBar)`. Useful for allowing the "caller" to provide their own ID for the "main" row being created, if there is one. Optional to use if you find it awkward.
 - `enums` - A map of SQL enums names to an array of enum values. Useful for creating one row for each value of an enum (ex: each user role).
 
 # Security
