@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -107,7 +108,7 @@ func GetEnumValues(ctx context.Context, tx pgx.Tx) (EnumValuesResult, error) {
 }
 
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)
-var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:`)
+var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:[a-zA-Z]+\(`)
 
 func prepareValue(rawValue string) (string, error) {
 	valueFuncMatches := valueFuncRegex.FindStringSubmatch(rawValue)
@@ -181,32 +182,60 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 		if column == "~conflict" {
 			continue
 		}
+		// Explicit dependencies, for foreign keys to non-primary keys.
+		if column == "~dependencies" {
+			dependencies := []string{}
+			switch v := valueRaw.(type) {
+			// Coming from yaml
+			case []interface{}:
+				for _, curr := range v {
+					dependencies = append(dependencies, curr.(string))
+				}
+			// Coming from Go, probably a test
+			case []string:
+				dependencies = v
+			default:
+				return "", fmt.Errorf("cannot parse ~dependencies value in row %s", rowId)
+			}
+			for _, dependency := range dependencies {
+				err := dependencyGraph.AddEdge(rowId, dependency)
+				if isRealGraphError(err) {
+					return "", err
+				}
+			}
+			continue
+		}
 
-		// Technically we allow more than strings in ripoff files for templating purposes,
+		// Technically we allow more than null strings in ripoff files for templating purposes,
 		// but full support (ex: escaping arrays, what to do with maps, etc.) is quite hard so tabling that for now.
-		value := fmt.Sprint(valueRaw)
+		if valueRaw == nil {
+			values = append(values, "NULL")
+			setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), "NULL"))
+		} else {
+			value := fmt.Sprint(valueRaw)
 
-		// Assume that if a valueFunc is prefixed with a table name, it's a primary/foreign key.
-		addEdge := referenceRegex.MatchString(value)
-		// Don't add edges to and from the same row.
-		if addEdge && rowId != value {
-			err := dependencyGraph.AddEdge(rowId, value)
+			// Assume that if a valueFunc is prefixed with a table name, it's a primary/foreign key.
+			addEdge := referenceRegex.MatchString(value)
+			// Don't add edges to and from the same row.
+			if addEdge && rowId != value {
+				err := dependencyGraph.AddEdge(rowId, value)
+				if isRealGraphError(err) {
+					return "", err
+				}
+			}
+
+			columns = append(columns, pq.QuoteIdentifier(column))
+			valuePrepared, err := prepareValue(value)
 			if err != nil {
 				return "", err
 			}
+			// Assume this column is the primary key.
+			if rowId == value && onConflictColumn == "" {
+				onConflictColumn = pq.QuoteIdentifier(column)
+			}
+			values = append(values, pq.QuoteLiteral(valuePrepared))
+			setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), pq.QuoteLiteral(valuePrepared)))
 		}
-
-		columns = append(columns, pq.QuoteIdentifier(column))
-		valuePrepared, err := prepareValue(value)
-		if err != nil {
-			return "", err
-		}
-		// Assume this column is the primary key.
-		if rowId == value && onConflictColumn == "" {
-			onConflictColumn = pq.QuoteIdentifier(column)
-		}
-		values = append(values, pq.QuoteLiteral(valuePrepared))
-		setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), pq.QuoteLiteral(valuePrepared)))
 	}
 
 	if onConflictColumn == "" {
@@ -260,4 +289,105 @@ func buildQueriesForRipoff(primaryKeys PrimaryKeysResult, totalRipoff RipoffFile
 		sortedQueries = append(sortedQueries, query)
 	}
 	return sortedQueries, nil
+}
+
+const columnsWithForeignKeysQuery = `
+select col.table_name as table,
+       col.column_name,
+       COALESCE(rel.table_name, '') as primary_table,
+       COALESCE(rel.column_name, '') as primary_column,
+			 COALESCE(kcu.constraint_name, '')
+from information_schema.columns col
+left join (select kcu.constraint_schema, 
+                  kcu.constraint_name, 
+                  kcu.table_schema,
+                  kcu.table_name, 
+                  kcu.column_name, 
+                  kcu.ordinal_position,
+                  kcu.position_in_unique_constraint
+           from information_schema.key_column_usage kcu
+           join information_schema.table_constraints tco
+                on kcu.constraint_schema = tco.constraint_schema
+                and kcu.constraint_name = tco.constraint_name
+                and tco.constraint_type = 'FOREIGN KEY'
+          ) as kcu
+          on col.table_schema = kcu.table_schema
+          and col.table_name = kcu.table_name
+          and col.column_name = kcu.column_name
+left join information_schema.referential_constraints rco
+          on rco.constraint_name = kcu.constraint_name
+          and rco.constraint_schema = kcu.table_schema
+left join information_schema.key_column_usage rel
+          on rco.unique_constraint_name = rel.constraint_name
+          and rco.unique_constraint_schema = rel.constraint_schema
+          and rel.ordinal_position = kcu.position_in_unique_constraint
+where col.table_schema = 'public';
+`
+
+type ForeignKey struct {
+	ToTable          string
+	ColumnConditions [][2]string
+}
+
+type ForeignKeyResultTable struct {
+	Columns []string
+	// Constraint -> Fkey
+	ForeignKeys map[string]*ForeignKey
+}
+
+// Map of table name to foreign keys.
+type ForeignKeysResult map[string]*ForeignKeyResultTable
+
+func getForeignKeysResult(ctx context.Context, conn pgx.Tx) (ForeignKeysResult, error) {
+	rows, err := conn.Query(ctx, columnsWithForeignKeysQuery)
+	if err != nil {
+		return ForeignKeysResult{}, err
+	}
+	defer rows.Close()
+
+	result := ForeignKeysResult{}
+
+	for rows.Next() {
+		var fromTableName string
+		var fromColumnName string
+		var toTableName string
+		var toColumnName string // Unused
+		var constaintName string
+		err = rows.Scan(&fromTableName, &fromColumnName, &toTableName, &toColumnName, &constaintName)
+		if err != nil {
+			return ForeignKeysResult{}, err
+		}
+		_, tableExists := result[fromTableName]
+		if !tableExists {
+			result[fromTableName] = &ForeignKeyResultTable{
+				Columns:     []string{},
+				ForeignKeys: map[string]*ForeignKey{},
+			}
+		}
+		result[fromTableName].Columns = append(result[fromTableName].Columns, fromColumnName)
+		if constaintName != "" {
+			_, fkeyExists := result[fromTableName].ForeignKeys[constaintName]
+			if !fkeyExists {
+				result[fromTableName].ForeignKeys[constaintName] = &ForeignKey{
+					ToTable:          toTableName,
+					ColumnConditions: [][2]string{},
+				}
+			}
+			if fromColumnName != "" && toColumnName != "" {
+				result[fromTableName].ForeignKeys[constaintName].ColumnConditions = append(
+					result[fromTableName].ForeignKeys[constaintName].ColumnConditions,
+					[2]string{fromColumnName, toColumnName},
+				)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func isRealGraphError(err error) bool {
+	if err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists) {
+		return false
+	}
+	return true
 }
