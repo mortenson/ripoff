@@ -108,4 +108,6 @@ func main() {
 		slog.Error("Could not write ripoff file", errAttr(err))
 		os.Exit(1)
 	}
+
+	slog.Info(fmt.Sprintf("Ripoff export complete, %d rows exported", len(ripoffFile.Rows)))
 }
