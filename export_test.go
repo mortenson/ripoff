@@ -14,23 +14,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func runTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir string) {
-	schemaFile, err := os.ReadFile(path.Join(testDir, "schema.sql"))
+func runExportTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir string) {
+	// Set up schema and initial rows.
+	setupFile, err := os.ReadFile(path.Join(testDir, "setup.sql"))
 	require.NoError(t, err)
-	_, err = tx.Exec(ctx, string(schemaFile))
+	_, err = tx.Exec(ctx, string(setupFile))
 	require.NoError(t, err)
-	enums, err := GetEnumValues(ctx, tx)
+	// Generate new ripoff file.
+	ripoffFile, err := ExportToRipoff(ctx, tx)
 	require.NoError(t, err)
-	totalRipoff, err := RipoffFromDirectory(testDir, enums)
+	// Wipe database.
+	truncateFile, err := os.ReadFile(path.Join(testDir, "truncate.sql"))
 	require.NoError(t, err)
-	err = RunRipoff(ctx, tx, totalRipoff)
+	_, err = tx.Exec(ctx, string(truncateFile))
 	require.NoError(t, err)
-	// Run again to implicitly test upsert behavior.
-	err = RunRipoff(ctx, tx, totalRipoff)
+	// Run generated ripoff.
+	err = RunRipoff(ctx, tx, ripoffFile)
 	require.NoError(t, err)
 	// Try to verify that the number of generated rows matches the ripoff.
 	tableCount := map[string]int{}
-	for rowId := range totalRipoff.Rows {
+	for rowId := range ripoffFile.Rows {
 		tableName := strings.Split(rowId, ":")
 		if len(tableName) > 0 {
 			tableCount[tableName[0]]++
@@ -43,21 +46,9 @@ func runTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir string) {
 		require.NoError(t, err)
 		require.Equal(t, expectedCount, realCount)
 	}
-	// Test output further if needed.
-	validationFile, err := os.ReadFile(path.Join(testDir, "validate.sql"))
-	if err == nil {
-		row := tx.QueryRow(ctx, string(validationFile))
-		var success int
-		var debug string
-		err := row.Scan(&success, &debug)
-		require.NoError(t, err)
-		if success != 1 {
-			t.Fatalf("Validation failed with debug content: %s", debug)
-		}
-	}
 }
 
-func TestRipoff(t *testing.T) {
+func TestRipoffExport(t *testing.T) {
 	envUrl := os.Getenv("RIPOFF_TEST_DATABASE_URL")
 	if envUrl == "" {
 		envUrl = "postgres:///ripoff-test-db"
@@ -70,7 +61,7 @@ func TestRipoff(t *testing.T) {
 	defer conn.Close(ctx)
 
 	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "testdata", "import")
+	dir := path.Join(path.Dir(filename), "testdata", "export")
 	dirEntry, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
@@ -80,7 +71,7 @@ func TestRipoff(t *testing.T) {
 		}
 		tx, err := conn.Begin(ctx)
 		require.NoError(t, err)
-		runTestData(t, ctx, tx, path.Join(dir, e.Name()))
+		runExportTestData(t, ctx, tx, path.Join(dir, e.Name()))
 		err = tx.Rollback(ctx)
 		require.NoError(t, err)
 	}

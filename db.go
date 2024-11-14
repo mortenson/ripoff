@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -107,7 +108,7 @@ func GetEnumValues(ctx context.Context, tx pgx.Tx) (EnumValuesResult, error) {
 }
 
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)
-var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:`)
+var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:[a-zA-Z]+\(`)
 
 func prepareValue(rawValue string) (string, error) {
 	valueFuncMatches := valueFuncRegex.FindStringSubmatch(rawValue)
@@ -181,32 +182,46 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 		if column == "~conflict" {
 			continue
 		}
+		if column == "~dependencies" {
+			for _, dependency := range valueRaw.([]interface{}) {
+				err := dependencyGraph.AddEdge(rowId, dependency.(string))
+				if isRealGraphError(err) {
+					return "", err
+				}
+			}
+			continue
+		}
 
-		// Technically we allow more than strings in ripoff files for templating purposes,
+		// Technically we allow more than null strings in ripoff files for templating purposes,
 		// but full support (ex: escaping arrays, what to do with maps, etc.) is quite hard so tabling that for now.
-		value := fmt.Sprint(valueRaw)
+		if valueRaw == nil {
+			values = append(values, "NULL")
+			setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), "NULL"))
+		} else {
+			value := fmt.Sprint(valueRaw)
 
-		// Assume that if a valueFunc is prefixed with a table name, it's a primary/foreign key.
-		addEdge := referenceRegex.MatchString(value)
-		// Don't add edges to and from the same row.
-		if addEdge && rowId != value {
-			err := dependencyGraph.AddEdge(rowId, value)
+			// Assume that if a valueFunc is prefixed with a table name, it's a primary/foreign key.
+			addEdge := referenceRegex.MatchString(value)
+			// Don't add edges to and from the same row.
+			if addEdge && rowId != value {
+				err := dependencyGraph.AddEdge(rowId, value)
+				if isRealGraphError(err) {
+					return "", err
+				}
+			}
+
+			columns = append(columns, pq.QuoteIdentifier(column))
+			valuePrepared, err := prepareValue(value)
 			if err != nil {
 				return "", err
 			}
+			// Assume this column is the primary key.
+			if rowId == value && onConflictColumn == "" {
+				onConflictColumn = pq.QuoteIdentifier(column)
+			}
+			values = append(values, pq.QuoteLiteral(valuePrepared))
+			setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), pq.QuoteLiteral(valuePrepared)))
 		}
-
-		columns = append(columns, pq.QuoteIdentifier(column))
-		valuePrepared, err := prepareValue(value)
-		if err != nil {
-			return "", err
-		}
-		// Assume this column is the primary key.
-		if rowId == value && onConflictColumn == "" {
-			onConflictColumn = pq.QuoteIdentifier(column)
-		}
-		values = append(values, pq.QuoteLiteral(valuePrepared))
-		setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), pq.QuoteLiteral(valuePrepared)))
 	}
 
 	if onConflictColumn == "" {
@@ -306,6 +321,7 @@ type ForeignKeyResultTable struct {
 	ForeignKeys map[string]*ForeignKey
 }
 
+// Map of table name to foreign keys.
 type ForeignKeysResult map[string]*ForeignKeyResultTable
 
 func getForeignKeysResult(ctx context.Context, conn pgx.Tx) (ForeignKeysResult, error) {
@@ -353,4 +369,11 @@ func getForeignKeysResult(ctx context.Context, conn pgx.Tx) (ForeignKeysResult, 
 	}
 
 	return result, nil
+}
+
+func isRealGraphError(err error) bool {
+	if err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists) {
+		return false
+	}
+	return true
 }

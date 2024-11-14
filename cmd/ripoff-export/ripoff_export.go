@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"path"
@@ -76,7 +75,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	ripoffFile, err := ripoff.ExportToRipoff(ctx, conn, exportDirectory)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		slog.Error("Could not create transaction", errAttr(err))
+		os.Exit(1)
+	}
+	defer func() {
+		err = tx.Rollback(ctx)
+		if err != nil && err != pgx.ErrTxClosed {
+			slog.Error("Could not rollback transaction", errAttr(err))
+			os.Exit(1)
+		}
+	}()
+
+	ripoffFile, err := ripoff.ExportToRipoff(ctx, tx)
 	if err != nil {
 		slog.Error("Could not assemble ripoff file from database", errAttr(err))
 		os.Exit(1)
@@ -91,5 +103,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Print(ripoffFileBuf.String())
+	err = os.WriteFile(path.Join(exportDirectory, "ripoff.yml"), ripoffFileBuf.Bytes(), 0644)
+	if err != nil {
+		slog.Error("Could not write ripoff file", errAttr(err))
+		os.Exit(1)
+	}
 }
