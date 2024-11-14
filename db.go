@@ -182,9 +182,23 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 		if column == "~conflict" {
 			continue
 		}
+		// Explicit dependencies, for foreign keys to non-primary keys.
 		if column == "~dependencies" {
-			for _, dependency := range valueRaw.([]interface{}) {
-				err := dependencyGraph.AddEdge(rowId, dependency.(string))
+			dependencies := []string{}
+			switch v := valueRaw.(type) {
+			// Coming from yaml
+			case []interface{}:
+				for _, curr := range v {
+					dependencies = append(dependencies, curr.(string))
+				}
+			// Coming from Go, probably a test
+			case []string:
+				dependencies = v
+			default:
+				return "", fmt.Errorf("cannot parse ~dependencies value in row %s", rowId)
+			}
+			for _, dependency := range dependencies {
+				err := dependencyGraph.AddEdge(rowId, dependency)
 				if isRealGraphError(err) {
 					return "", err
 				}

@@ -23,22 +23,25 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 		Rows: map[string]Row{},
 	}
 
+	// We use primary keys to determine what columns to use as row keys.
 	primaryKeyResult, err := getPrimaryKeys(ctx, tx)
 	if err != nil {
 		return ripoffFile, err
 	}
+	// We use foreign keys to reference other rows using the table_name:literal(...) syntax.
 	foreignKeyResult, err := getForeignKeysResult(ctx, tx)
 	if err != nil {
 		return ripoffFile, err
 	}
 	// A map from [table,column] -> ForeignKey for single column foreign keys.
 	singleColumnFkeyMap := map[[2]string]*ForeignKey{}
-	// A map from [table,column] -> a map of column values to row keys (ex: users:literal(1)) of the given table
+	// A map from [table,column] -> a map of column values to row keys (ex: users:literal(1)) of the given table.
 	uniqueConstraintMap := map[[2]string]map[string]string{}
 	// A map from table to a list of columns that need mapped in uniqueConstraintMap.
 	hasUniqueConstraintMap := map[string][]string{}
 	for table, tableInfo := range foreignKeyResult {
 		for _, foreignKey := range tableInfo.ForeignKeys {
+			// We could possibly maintain a uniqueConstraintMap map for these as well, but tabling for now.
 			if len(foreignKey.ColumnConditions) != 1 {
 				continue
 			}
@@ -59,6 +62,7 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 
 	for table, primaryKeys := range primaryKeyResult {
 		columns := make([]string, len(foreignKeyResult[table].Columns))
+		// Due to yaml limitations, ripoff treats all data as nullable text on import and export.
 		for i, column := range foreignKeyResult[table].Columns {
 			columns[i] = fmt.Sprintf("CAST(%s AS TEXT)", pq.QuoteIdentifier(column))
 		}
@@ -74,6 +78,7 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 			if err != nil {
 				return RipoffFile{}, err
 			}
+			// Convert the columns to nullable strings.
 			columns := make([]*string, len(columnsRaw))
 			for i, column := range columnsRaw {
 				if column == nil {
@@ -86,17 +91,17 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 			ripoffRow := Row{}
 			ids := []string{}
 			for i, field := range fields {
-				//
+				// Null columns are still exported since we don't know if there is a default or not (at least not at time of writing).
 				if columns[i] == nil {
 					ripoffRow[field.Name] = nil
 					continue
 				}
 				columnVal := *columns[i]
-				// Note: the order here
+				// Note: for multi-column primary keys this is ugly.
 				if slices.Contains(primaryKeys, field.Name) {
 					ids = append(ids, columnVal)
 				}
-				// No need to export primary keys due to inference from schema.
+				// No need to export primary keys due to inference from schema on import.
 				if len(primaryKeys) == 1 && primaryKeys[0] == field.Name {
 					continue
 				}

@@ -41,7 +41,7 @@ rows:
 
 For more (sometimes wildly complex) examples, see `./testdata`.
 
-## More on valueFuncs and row keys
+## More on valueFuncs
 
 valueFuncs allow you to generate random data that's seeded with a static string. This ensures that repeat runs of ripoff are deterministic, which enables upserts (consistent primary keys).
 
@@ -89,6 +89,18 @@ rows:
 
 - `rowId` - The map key of the row using this template, ex `users:uuid(fooBar)`. Useful for allowing the "caller" to provide their own ID for the "main" row being created, if there is one. Optional to use if you find it awkward.
 - `enums` - A map of SQL enums names to an array of enum values. Useful for creating one row for each value of an enum (ex: each user role).
+
+# Export from your database to ripoff files
+
+An experimental command has been added to generate ripoff files from your database. This may be useful to users just starting to use ripoff who don't have so much fake data that templating is required yet.
+
+Currently, it attempts to export all data from all tables into a single ripoff file. In the future flags may be added to allow you to include/exclude tables, add arbitrary `WHERE` conditions, modify the row id/key, export multiple files, or use existing templates.
+
+## Installation
+
+1. Run `go install github.com/mortenson/ripoff/cmd/ripoff-export@latest`
+2. Set the `DATABASE_URL` env variable to your local PostgreSQL database
+3. Run `ripoff-export <directory to be deleted and exported to>`
 
 # Security
 
