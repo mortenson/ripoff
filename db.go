@@ -209,6 +209,7 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 		// Technically we allow more than null strings in ripoff files for templating purposes,
 		// but full support (ex: escaping arrays, what to do with maps, etc.) is quite hard so tabling that for now.
 		if valueRaw == nil {
+			columns = append(columns, pq.QuoteIdentifier(column))
 			values = append(values, "NULL")
 			setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), "NULL"))
 		} else {
