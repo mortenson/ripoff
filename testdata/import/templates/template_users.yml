@@ -3,6 +3,8 @@ rows:
   users:uuid({{ $email }}):
     email: {{ $email }}
     avatar_id: avatars:uuid({{ $avatarUrl }})
+  # Template recursion is supported.
   avatars:uuid({{ $avatarUrl }}):
-    url: {{ $avatarUrl }}
+    template: template_avatar.yml
+    avatarUrl: {{ $avatarUrl }}
   {{ end }}
