@@ -2,18 +2,42 @@ package ripoff
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/brianvoe/gofakeit/v7"
 )
 
+// Helper method to cast user-supplied args to ints if provided.
+func defaultArgsInt(args []string, defaults []int) ([]int, error) {
+	if len(args) != len(defaults) {
+		return defaults, nil
+	}
+	ret := make([]int, len(defaults))
+	for i := 0; i < len(defaults); i++ {
+		argInt, err := strconv.Atoi(args[i])
+		if err != nil {
+			return []int{}, err
+		}
+		ret[i] = argInt
+	}
+	return ret, nil
+}
+
 // Calls a `func() string` shaped method in a given faker instance.
-func callFakerMethod(method string, faker *gofakeit.Faker) (string, error) {
+func callFakerMethod(method string, faker *gofakeit.Faker, args ...string) (string, error) {
 	switch method {
-	// Note: added these in for my own use, probably should let valueFuncs take multiple params
 	case "loremIpsumSentence":
-		return faker.LoremIpsumSentence(20), nil
+		argsInt, err := defaultArgsInt(args[1:], []int{20})
+		if err != nil {
+			return "", err
+		}
+		return faker.LoremIpsumSentence(argsInt[0]), nil
 	case "loremIpsumParagraph":
-		return faker.LoremIpsumParagraph(1, 4, 20, ""), nil
+		argsInt, err := defaultArgsInt(args[1:], []int{1, 4, 20})
+		if err != nil {
+			return "", err
+		}
+		return faker.LoremIpsumParagraph(argsInt[0], argsInt[1], argsInt[2], ""), nil
 	case "achAccount":
 		return faker.AchAccount(), nil
 	case "achRouting":

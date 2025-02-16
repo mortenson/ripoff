@@ -10,12 +10,14 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
 	"github.com/dominikbraun/graph"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/lib/pq"
+	"github.com/tj/go-naturaldate"
 )
 
 // Runs ripoff from start to finish, without committing the transaction.
@@ -117,6 +119,7 @@ func prepareValue(rawValue string) (string, error) {
 	}
 	methodName := valueFuncMatches[1]
 	value := valueFuncMatches[2]
+	valueParts := strings.Split(strings.ReplaceAll(" ", "", valueFuncMatches[2]), ",")
 
 	// Create a new random seed based on a sha256 hash of the value.
 	h := sha256.New()
@@ -136,11 +139,14 @@ func prepareValue(rawValue string) (string, error) {
 		return fmt.Sprint(randSeed.Int()), nil
 	case "literal":
 		return value, nil
+	case "naturalDate":
+		parsed, err := naturaldate.Parse(value, time.Now())
+		return parsed.Format(time.RFC3339), err
 	}
 
 	// Assume the user meant to call a gofakeit.Faker method.
 	faker := gofakeit.NewFaker(randSeed, true)
-	fakerResult, err := callFakerMethod(methodName, faker)
+	fakerResult, err := callFakerMethod(methodName, faker, valueParts...)
 	if err != nil {
 		return "", err
 	}
