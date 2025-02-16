@@ -1,3 +1,4 @@
 rows:
   users:uuid(fooBar):
     email: email(fooBar)
+    last_logged_in_at: naturalDate(10 days ago)
