@@ -55,12 +55,9 @@ func concatRows(templates *template.Template, existingRows map[string]Row, newRo
 			if err != nil {
 				return err
 			}
-			for templateRowId, templateRow := range ripoff.Rows {
-				_, rowExists := existingRows[templateRowId]
-				if rowExists {
-					return fmt.Errorf("row %s is defined more than once", rowId)
-				}
-				existingRows[templateRowId] = templateRow
+			err = concatRows(templates, existingRows, ripoff.Rows, enums)
+			if err != nil {
+				return err
 			}
 		} else {
 			existingRows[rowId] = row
