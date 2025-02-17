@@ -4,16 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
-	"github.com/dominikbraun/graph"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/lib/pq"
@@ -154,7 +153,7 @@ func prepareValue(rawValue string) (string, error) {
 	return fakerResult, nil
 }
 
-func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, dependencyGraph graph.Graph[string, string]) (string, error) {
+func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, dependencyGraph map[string][]string) (string, error) {
 	parts := strings.Split(rowId, ":")
 	if len(parts) < 2 {
 		return "", fmt.Errorf("invalid id: %s", rowId)
@@ -203,12 +202,8 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 			default:
 				return "", fmt.Errorf("cannot parse ~dependencies value in row %s", rowId)
 			}
-			for _, dependency := range dependencies {
-				err := dependencyGraph.AddEdge(rowId, dependency)
-				if isRealGraphError(err) {
-					return "", err
-				}
-			}
+			dependencyGraph[rowId] = append(dependencyGraph[rowId], dependencies...)
+			dependencyGraph[rowId] = slices.Compact(dependencyGraph[rowId])
 			continue
 		}
 
@@ -225,10 +220,8 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 			addEdge := referenceRegex.MatchString(value)
 			// Don't add edges to and from the same row.
 			if addEdge && rowId != value {
-				err := dependencyGraph.AddEdge(rowId, value)
-				if isRealGraphError(err) {
-					return "", err
-				}
+				dependencyGraph[rowId] = append(dependencyGraph[rowId], value)
+				dependencyGraph[rowId] = slices.Compact(dependencyGraph[rowId])
 			}
 
 			columns = append(columns, pq.QuoteIdentifier(column))
@@ -265,15 +258,12 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 
 // Returns a sorted array of queries to run based on a given ripoff file.
 func buildQueriesForRipoff(primaryKeys PrimaryKeysResult, totalRipoff RipoffFile) ([]string, error) {
-	dependencyGraph := graph.New(graph.StringHash, graph.Directed(), graph.Acyclic())
+	dependencyGraph := map[string][]string{}
 	queries := map[string]string{}
 
 	// Add vertexes first, since rows can be in any order.
 	for rowId := range totalRipoff.Rows {
-		err := dependencyGraph.AddVertex(rowId)
-		if err != nil {
-			return []string{}, err
-		}
+		dependencyGraph[rowId] = []string{}
 	}
 
 	// Build queries.
@@ -286,7 +276,10 @@ func buildQueriesForRipoff(primaryKeys PrimaryKeysResult, totalRipoff RipoffFile
 	}
 
 	// Sort and reverse the graph, so queries are in order of least (hopefully none) to most dependencies.
-	ordered, _ := graph.TopologicalSort(dependencyGraph)
+	ordered, err := topologicalSort(dependencyGraph)
+	if err != nil {
+		return []string{}, err
+	}
 	sortedQueries := []string{}
 	for i := len(ordered) - 1; i >= 0; i-- {
 		query, ok := queries[ordered[i]]
@@ -392,9 +385,38 @@ func getForeignKeysResult(ctx context.Context, conn pgx.Tx) (ForeignKeysResult, 
 	return result, nil
 }
 
-func isRealGraphError(err error) bool {
-	if err == nil || errors.Is(err, graph.ErrEdgeAlreadyExists) {
-		return false
+// Copy of github.com/amwolff/gorder DFS topological sort implementation,
+// with the only change being allowing non-acyclic graphs (for better or worse).
+func topologicalSort(digraph map[string][]string) ([]string, error) {
+	var (
+		acyclic       = true
+		order         []string
+		permanentMark = make(map[string]bool)
+		temporaryMark = make(map[string]bool)
+		visit         func(string)
+	)
+
+	visit = func(u string) {
+		if temporaryMark[u] {
+			acyclic = false
+		} else if !(temporaryMark[u] || permanentMark[u]) {
+			temporaryMark[u] = true
+			for _, v := range digraph[u] {
+				visit(v)
+				if !acyclic {
+					slog.Debug("Ripoff file appears to have cycle", slog.String("rowId", u))
+				}
+			}
+			delete(temporaryMark, u)
+			permanentMark[u] = true
+			order = append([]string{u}, order...)
+		}
 	}
-	return true
+
+	for u := range digraph {
+		if !permanentMark[u] {
+			visit(u)
+		}
+	}
+	return order, nil
 }

@@ -6,3 +6,4 @@ rows:
     url: image.png
   avatar_modifiers:uuid(fooBarAvatar):
     grayscale: true
+    ~dependencies: [avatars:uuid(fooBarAvatar)]

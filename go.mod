@@ -6,7 +6,6 @@ toolchain go1.22.4
 
 require (
 	github.com/brianvoe/gofakeit/v7 v7.0.4
-	github.com/dominikbraun/graph v0.23.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/lib/pq v1.10.9
