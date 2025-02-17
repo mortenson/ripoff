@@ -101,12 +101,20 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 				if slices.Contains(primaryKeys, field.Name) {
 					ids = append(ids, columnVal)
 				}
+				foreignKey, isFkey := singleColumnFkeyMap[[2]string{table, field.Name}]
 				// No need to export primary keys due to inference from schema on import.
 				if len(primaryKeys) == 1 && primaryKeys[0] == field.Name {
+					// The primary key is a foreign key, we'll need explicit dependencies.
+					if isFkey && columnVal != "" {
+						dependencies, ok := ripoffRow["~dependencies"].([]string)
+						if !ok {
+							ripoffRow["~dependencies"] = []string{}
+						}
+						ripoffRow["~dependencies"] = append(dependencies, fmt.Sprintf("%s:literal(%s)", foreignKey.ToTable, columnVal))
+					}
 					continue
 				}
 				// If this is a foreign key, should ensure it uses the table:valueFunc() format.
-				foreignKey, isFkey := singleColumnFkeyMap[[2]string{table, field.Name}]
 				if isFkey && columnVal != "" {
 					// Does the referenced table have more than one primary key, or does the constraint not point to a primary key?
 					// Then is a foreign key to a non-primary key, we need to fill this info in later.
