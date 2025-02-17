@@ -6,3 +6,4 @@ rows:
     url: {{ .avatarUrl }}
   avatar_modifiers:uuid({{ .rowId }}):
     grayscale: {{ .avatarGrayscale }}
+    ~dependencies: [avatars:uuid({{ .rowId }})]
