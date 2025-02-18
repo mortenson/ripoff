@@ -32,6 +32,22 @@ CREATE TABLE users (
   employee_id BIGSERIAL NOT NULL REFERENCES employees
 );
 
+CREATE TABLE multi_column_pkey (
+  id1 UUID NOT NULL,
+  id2 UUID NOT NULL,
+  PRIMARY KEY (id1, id2)
+);
+
+CREATE TABLE multi_column_fkey (
+  id UUID NOT NULL PRIMARY KEY,
+  id1_fkey UUID NOT NULL,
+  id2_fkey UUID NOT NULL
+);
+
+ALTER TABLE multi_column_fkey
+  ADD CONSTRAINT multi_column_fkey_multi_column_pkey
+  FOREIGN KEY (id1_fkey, id2_fkey) REFERENCES multi_column_pkey (id1, id2);
+
 INSERT INTO avatars
     (id, url)
   VALUES
@@ -49,9 +65,9 @@ INSERT INTO avatar_modifiers
 INSERT INTO roles
     (id, name)
   VALUES
-    (gen_random_uuid(), 'Boss'),
-    (gen_random_uuid(), 'Mini Boss'),
-    (gen_random_uuid(), 'Minion');
+    ('d1e36a3c-32ca-4b26-9358-ab117b685aaf', 'Boss'),
+    ('17b0b806-a907-4097-a86e-d5a2e44a55b0', 'Mini Boss'),
+    ('65906a7e-877c-4e39-acc2-f2accd1495f1', 'Minion');
 
 INSERT INTO employees
     (id, role)
@@ -66,3 +82,13 @@ INSERT INTO users
     ('448e6222-a1ed-11ef-b864-0242ac120002', '09af5166-a1ed-11ef-b864-0242ac120002', 'first@example.com', 1),
     ('459a966e-a1f1-11ef-b864-0242ac120002', '0cf7650c-a1ed-11ef-b864-0242ac120002', 'second@example.com', 2),
     ('4848cf02-a1f1-11ef-b864-0242ac120002', '184e5e10-a1ed-11ef-b864-0242ac120002', 'third@example.com', 3);
+
+INSERT INTO multi_column_pkey
+    (id1, id2)
+  VALUES
+    ('0a794e82-ed63-11ef-9cd2-0242ac120002', '6d5c2f60-ed63-11ef-9cd2-0242ac120002');
+
+INSERT INTO multi_column_fkey
+    (id, id1_fkey, id2_fkey)
+  VALUES
+    ('737ba6d2-ed63-11ef-9cd2-0242ac120002', '0a794e82-ed63-11ef-9cd2-0242ac120002', '6d5c2f60-ed63-11ef-9cd2-0242ac120002');
