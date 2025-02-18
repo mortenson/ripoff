@@ -1,0 +1,57 @@
+rows:
+    avatar_modifiers:literal(0cf7650c-a1ed-11ef-b864-0242ac120002):
+        ~dependencies:
+            - avatars:literal(0cf7650c-a1ed-11ef-b864-0242ac120002)
+        grayscale: "true"
+    avatar_modifiers:literal(09af5166-a1ed-11ef-b864-0242ac120002):
+        ~dependencies:
+            - avatars:literal(09af5166-a1ed-11ef-b864-0242ac120002)
+        grayscale: "false"
+    avatar_modifiers:literal(184e5e10-a1ed-11ef-b864-0242ac120002):
+        ~dependencies:
+            - avatars:literal(184e5e10-a1ed-11ef-b864-0242ac120002)
+        grayscale: "false"
+    avatars:literal(0cf7650c-a1ed-11ef-b864-0242ac120002):
+        url: second.png
+    avatars:literal(09af5166-a1ed-11ef-b864-0242ac120002):
+        url: first.png
+    avatars:literal(184e5e10-a1ed-11ef-b864-0242ac120002):
+        url: third.png
+    employees:literal(1):
+        ~dependencies:
+            - roles:literal(d1e36a3c-32ca-4b26-9358-ab117b685aaf)
+        role: Boss
+    employees:literal(2):
+        ~dependencies:
+            - roles:literal(17b0b806-a907-4097-a86e-d5a2e44a55b0)
+        role: Mini Boss
+    employees:literal(3):
+        ~dependencies:
+            - roles:literal(65906a7e-877c-4e39-acc2-f2accd1495f1)
+        role: Minion
+    multi_column_fkey:literal(737ba6d2-ed63-11ef-9cd2-0242ac120002):
+        ~dependencies:
+            - multi_column_pkey:literal(6d5c2f60-ed63-11ef-9cd2-0242ac120002.0a794e82-ed63-11ef-9cd2-0242ac120002)
+        id1_fkey: 0a794e82-ed63-11ef-9cd2-0242ac120002
+        id2_fkey: 6d5c2f60-ed63-11ef-9cd2-0242ac120002
+    multi_column_pkey:literal(6d5c2f60-ed63-11ef-9cd2-0242ac120002.0a794e82-ed63-11ef-9cd2-0242ac120002):
+        id1: 0a794e82-ed63-11ef-9cd2-0242ac120002
+        id2: 6d5c2f60-ed63-11ef-9cd2-0242ac120002
+    roles:literal(17b0b806-a907-4097-a86e-d5a2e44a55b0):
+        name: Mini Boss
+    roles:literal(65906a7e-877c-4e39-acc2-f2accd1495f1):
+        name: Minion
+    roles:literal(d1e36a3c-32ca-4b26-9358-ab117b685aaf):
+        name: Boss
+    users:literal(448e6222-a1ed-11ef-b864-0242ac120002):
+        avatar_id: avatars:literal(09af5166-a1ed-11ef-b864-0242ac120002)
+        email: first@example.com
+        employee_id: employees:literal(1)
+    users:literal(459a966e-a1f1-11ef-b864-0242ac120002):
+        avatar_id: avatars:literal(0cf7650c-a1ed-11ef-b864-0242ac120002)
+        email: second@example.com
+        employee_id: employees:literal(2)
+    users:literal(4848cf02-a1f1-11ef-b864-0242ac120002):
+        avatar_id: avatars:literal(184e5e10-a1ed-11ef-b864-0242ac120002)
+        email: third@example.com
+        employee_id: employees:literal(3)

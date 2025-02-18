@@ -11,10 +11,8 @@ import (
 )
 
 type RowMissingDependency struct {
-	Row         Row
-	ToTable     string
-	ToColumn    string
-	UniqueValue string
+	Row              Row
+	ConstraintMapKey [3]string
 }
 
 // Exports all rows in the database to a ripoff file.
@@ -35,25 +33,12 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 	}
 	// A map from [table,column] -> ForeignKey for single column foreign keys.
 	singleColumnFkeyMap := map[[2]string]*ForeignKey{}
-	// A map from [table,column] -> a map of column values to row keys (ex: users:literal(1)) of the given table.
-	uniqueConstraintMap := map[[2]string]map[string]string{}
-	// A map from table to a list of columns that need mapped in uniqueConstraintMap.
-	hasUniqueConstraintMap := map[string][]string{}
+	// A map from [table,constraintName,values] -> rowKey.
+	constraintMap := map[[3]string]string{}
 	for table, tableInfo := range foreignKeyResult {
 		for _, foreignKey := range tableInfo.ForeignKeys {
-			// We could possibly maintain a uniqueConstraintMap map for these as well, but tabling for now.
-			if len(foreignKey.ColumnConditions) != 1 {
-				continue
-			}
-			singleColumnFkeyMap[[2]string{table, foreignKey.ColumnConditions[0][0]}] = foreignKey
-			// This is a foreign key to a unique index, not a primary key.
-			if len(primaryKeyResult[foreignKey.ToTable]) == 1 && primaryKeyResult[foreignKey.ToTable][0] != foreignKey.ColumnConditions[0][1] {
-				_, ok := hasUniqueConstraintMap[foreignKey.ToTable]
-				if !ok {
-					hasUniqueConstraintMap[foreignKey.ToTable] = []string{}
-				}
-				uniqueConstraintMap[[2]string{foreignKey.ToTable, foreignKey.ColumnConditions[0][1]}] = map[string]string{}
-				hasUniqueConstraintMap[foreignKey.ToTable] = append(hasUniqueConstraintMap[foreignKey.ToTable], foreignKey.ColumnConditions[0][1])
+			if len(foreignKey.ColumnConditions) == 1 {
+				singleColumnFkeyMap[[2]string{table, foreignKey.ColumnConditions[0][0]}] = foreignKey
 			}
 		}
 	}
@@ -89,6 +74,8 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 				}
 			}
 			ripoffRow := Row{}
+			// A map of fieldName -> tableName to convert values to literal:(...)
+			literalFields := map[string]string{}
 			ids := []string{}
 			for i, field := range fields {
 				// Null columns are still exported since we don't know if there is a default or not (at least not at time of writing).
@@ -114,51 +101,72 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 					}
 					continue
 				}
-				// If this is a foreign key, should ensure it uses the table:valueFunc() format.
-				if isFkey && columnVal != "" {
-					// Does the referenced table have more than one primary key, or does the constraint not point to a primary key?
-					// Then is a foreign key to a non-primary key, we need to fill this info in later.
-					if len(primaryKeyResult[foreignKey.ToTable]) != 1 || primaryKeyResult[foreignKey.ToTable][0] != foreignKey.ColumnConditions[0][1] {
-						missingDependencies = append(missingDependencies, RowMissingDependency{
-							Row:         ripoffRow,
-							UniqueValue: columnVal,
-							ToTable:     foreignKey.ToTable,
-							ToColumn:    foreignKey.ColumnConditions[0][1],
-						})
-					} else {
-						ripoffRow[field.Name] = fmt.Sprintf("%s:literal(%s)", foreignKey.ToTable, columnVal)
-						continue
-					}
+				// If this is a foreign key to a single-column primary key, we can use literal() instead of ~dependencies.
+				if isFkey && columnVal != "" && len(primaryKeyResult[foreignKey.ToTable]) == 1 && primaryKeyResult[foreignKey.ToTable][0] == foreignKey.ColumnConditions[0][1] {
+					literalFields[field.Name] = foreignKey.ToTable
 				}
 				// Normal column.
 				ripoffRow[field.Name] = columnVal
 			}
 			rowKey := fmt.Sprintf("%s:literal(%s)", table, strings.Join(ids, "."))
-			// For foreign keys to non-unique fields, we need to maintain our own map of unique values to rowKeys.
-			columnsThatNeepMapped, needsMapped := hasUniqueConstraintMap[table]
-			if needsMapped {
-				for i, field := range fields {
-					if columns[i] == nil {
+			// Hash values of this row for dependency lookups in the future.
+			for _, fkeys := range foreignKeyResult {
+				for constraintName, fkey := range fkeys.ForeignKeys {
+					if fkey.ToTable != table {
 						continue
 					}
-					columnVal := *columns[i]
-					if slices.Contains(columnsThatNeepMapped, field.Name) {
-						uniqueConstraintMap[[2]string{table, field.Name}][columnVal] = rowKey
+					values := []string{}
+					abort := false
+					for _, conditions := range fkey.ColumnConditions {
+						toColumnValue, hasToColumn := ripoffRow[conditions[1]]
+						if hasToColumn && toColumnValue.(string) != "" {
+							values = append(values, toColumnValue.(string))
+						} else {
+							abort = true
+							break
+						}
+					}
+					if abort {
+						continue
+					}
+					constraintMap[[3]string{table, constraintName, strings.Join(values, ",")}] = rowKey
+				}
+			}
+			// Now register missing dependencies for all our foreign keys.
+			for constraintName, fkey := range foreignKeyResult[table].ForeignKeys {
+				values := []string{}
+				allLiteral := true
+				for _, condition := range fkey.ColumnConditions {
+					fieldValue, hasField := ripoffRow[condition[0]]
+					fieldValueStr, isString := fieldValue.(string)
+					if hasField && isString && fieldValue != "" {
+						_, isLiteral := literalFields[condition[0]]
+						if !isLiteral {
+							allLiteral = false
+						}
+						values = append(values, fieldValueStr)
 					}
 				}
+				// We have enough values to satisfy the column conditions.
+				if !allLiteral && len(values) == len(fkey.ColumnConditions) {
+					missingDependencies = append(missingDependencies, RowMissingDependency{
+						Row:              ripoffRow,
+						ConstraintMapKey: [3]string{fkey.ToTable, constraintName, strings.Join(values, ",")},
+					})
+				}
+			}
+			// Finally convert some fields to use literal() for UX reasons.
+			for fieldName, toTable := range literalFields {
+				ripoffRow[fieldName] = fmt.Sprintf("%s:literal(%s)", toTable, ripoffRow[fieldName])
 			}
 			ripoffFile.Rows[rowKey] = ripoffRow
 		}
 	}
 	// Resolve missing dependencies now that all rows are in memory.
 	for _, missingDependency := range missingDependencies {
-		valueMap, ok := uniqueConstraintMap[[2]string{missingDependency.ToTable, missingDependency.ToColumn}]
+		rowKey, ok := constraintMap[missingDependency.ConstraintMapKey]
 		if !ok {
-			return ripoffFile, fmt.Errorf("row has dependency on column %s.%s which is not mapped", missingDependency.ToTable, missingDependency.ToColumn)
-		}
-		rowKey, ok := valueMap[missingDependency.UniqueValue]
-		if !ok {
-			return ripoffFile, fmt.Errorf("row has dependency on column %s.%s which does not contain unqiue value %s", missingDependency.ToTable, missingDependency.ToColumn, missingDependency.UniqueValue)
+			return ripoffFile, fmt.Errorf("row has missing dependency on constraint map key %s", missingDependency.ConstraintMapKey)
 		}
 		dependencies, ok := missingDependency.Row["~dependencies"].([]string)
 		if !ok {

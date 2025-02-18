@@ -139,7 +139,7 @@ func prepareValue(rawValue string) (string, error) {
 	case "literal":
 		return value, nil
 	case "naturalDate":
-		parsed, err := naturaldate.Parse(value, time.Now())
+		parsed, err := naturaldate.Parse(value, time.Now().UTC())
 		return parsed.Format(time.RFC3339), err
 	}
 
