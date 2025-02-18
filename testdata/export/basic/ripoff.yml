@@ -31,10 +31,10 @@ rows:
         role: Minion
     multi_column_fkey:literal(737ba6d2-ed63-11ef-9cd2-0242ac120002):
         ~dependencies:
-            - multi_column_pkey:literal(6d5c2f60-ed63-11ef-9cd2-0242ac120002.0a794e82-ed63-11ef-9cd2-0242ac120002)
+            - multi_column_pkey:literal(0a794e82-ed63-11ef-9cd2-0242ac120002.6d5c2f60-ed63-11ef-9cd2-0242ac120002)
         id1_fkey: 0a794e82-ed63-11ef-9cd2-0242ac120002
         id2_fkey: 6d5c2f60-ed63-11ef-9cd2-0242ac120002
-    multi_column_pkey:literal(6d5c2f60-ed63-11ef-9cd2-0242ac120002.0a794e82-ed63-11ef-9cd2-0242ac120002):
+    multi_column_pkey:literal(0a794e82-ed63-11ef-9cd2-0242ac120002.6d5c2f60-ed63-11ef-9cd2-0242ac120002):
         id1: 0a794e82-ed63-11ef-9cd2-0242ac120002
         id2: 6d5c2f60-ed63-11ef-9cd2-0242ac120002
     roles:literal(17b0b806-a907-4097-a86e-d5a2e44a55b0):

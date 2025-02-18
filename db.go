@@ -43,7 +43,7 @@ func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
 }
 
 const primaryKeysQuery = `
-SELECT STRING_AGG(c.column_name, '|'), tc.table_name
+SELECT STRING_AGG(c.column_name, '|' order by c.column_name), tc.table_name
 FROM information_schema.table_constraints tc 
 JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) 
 JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
@@ -77,7 +77,7 @@ func getPrimaryKeys(ctx context.Context, tx pgx.Tx) (PrimaryKeysResult, error) {
 }
 
 const enumValuesQuery = `
-SELECT STRING_AGG(e.enumlabel, '|'), t.typname
+SELECT STRING_AGG(e.enumlabel, '|' order by e.enumlabel), t.typname
 FROM pg_type t
 JOIN pg_enum e ON t.oid = e.enumtypid  
 JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
@@ -321,7 +321,8 @@ left join information_schema.key_column_usage rel
           on rco.unique_constraint_name = rel.constraint_name
           and rco.unique_constraint_schema = rel.constraint_schema
           and rel.ordinal_position = kcu.position_in_unique_constraint
-where col.table_schema = 'public';
+where col.table_schema = 'public'
+order by col.table_name, col.column_name;
 `
 
 type ForeignKey struct {
