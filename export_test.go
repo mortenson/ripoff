@@ -23,7 +23,7 @@ func runExportTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir str
 	require.NoError(t, err)
 
 	// Generate new ripoff file.
-	ripoffFile, err := ExportToRipoff(ctx, tx)
+	ripoffFile, err := ExportToRipoff(ctx, tx, []string{})
 	require.NoError(t, err)
 
 	// Ensure ripoff file matches expected output.
@@ -92,4 +92,167 @@ func TestRipoffExport(t *testing.T) {
 		err = tx.Rollback(ctx)
 		require.NoError(t, err)
 	}
+}
+
+// TestExcludeFlag tests that the exclude flag properly excludes tables from export
+func TestExcludeFlag(t *testing.T) {
+	envUrl := os.Getenv("RIPOFF_TEST_DATABASE_URL")
+	if envUrl == "" {
+		envUrl = "postgres:///ripoff-test-db"
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, envUrl)
+	if err != nil {
+		require.NoError(t, err)
+	}
+	defer conn.Close(ctx)
+
+	// Start a transaction that we'll roll back at the end
+	tx, err := conn.Begin(ctx)
+	require.NoError(t, err)
+	defer func() {
+		err := tx.Rollback(ctx)
+		require.NoError(t, err)
+	}()
+
+	// Create three tables - one we'll include and two we'll exclude
+	_, err = tx.Exec(ctx, `
+		CREATE TABLE include_me (
+			id SERIAL PRIMARY KEY,
+			name TEXT
+		);
+		
+		CREATE TABLE exclude_me (
+			id SERIAL PRIMARY KEY,
+			description TEXT
+		);
+		
+		CREATE TABLE also_exclude_me (
+			id SERIAL PRIMARY KEY,
+			data TEXT
+		);
+		
+		INSERT INTO include_me (name) VALUES ('test data 1'), ('test data 2');
+		INSERT INTO exclude_me (description) VALUES ('should not appear'), ('also should not appear');
+		INSERT INTO also_exclude_me (data) VALUES ('should not appear'), ('also should not appear'), ('third row');
+	`)
+	require.NoError(t, err)
+
+	// Test 1: Exclude a single table
+	t.Run("Single exclude", func(t *testing.T) {
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{"exclude_me"})
+		require.NoError(t, err)
+
+		// Verify that ripoffFile.Rows contains rows from include_me but not exclude_me
+		hasIncludeMe := false
+		hasExcludeMe := false
+		hasAlsoExcludeMe := false
+
+		for rowId := range ripoffFile.Rows {
+			tableName := strings.Split(rowId, ":")
+			if len(tableName) > 0 {
+				if tableName[0] == "include_me" {
+					hasIncludeMe = true
+				}
+				if tableName[0] == "exclude_me" {
+					hasExcludeMe = true
+				}
+				if tableName[0] == "also_exclude_me" {
+					hasAlsoExcludeMe = true
+				}
+			}
+		}
+
+		// We should have rows from include_me
+		require.True(t, hasIncludeMe, "Expected to find rows from include_me table")
+		
+		// We should NOT have rows from exclude_me
+		require.False(t, hasExcludeMe, "Found rows from exclude_me table even though it was excluded")
+		
+		// We should have rows from also_exclude_me (since it wasn't excluded in this test)
+		require.True(t, hasAlsoExcludeMe, "Expected to find rows from also_exclude_me table")
+
+		// Count rows to make sure we have the right number
+		includeCount := 0
+		excludeCount := 0
+		alsoExcludeCount := 0
+
+		for rowId := range ripoffFile.Rows {
+			tableName := strings.Split(rowId, ":")
+			if len(tableName) > 0 {
+				if tableName[0] == "include_me" {
+					includeCount++
+				}
+				if tableName[0] == "exclude_me" {
+					excludeCount++
+				}
+				if tableName[0] == "also_exclude_me" {
+					alsoExcludeCount++
+				}
+			}
+		}
+
+		require.Equal(t, 2, includeCount, "Expected 2 rows from include_me table")
+		require.Equal(t, 0, excludeCount, "Expected 0 rows from exclude_me table")
+		require.Equal(t, 3, alsoExcludeCount, "Expected 3 rows from also_exclude_me table")
+	})
+
+	// Test 2: Exclude multiple tables
+	t.Run("Multiple excludes", func(t *testing.T) {
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{"exclude_me", "also_exclude_me"})
+		require.NoError(t, err)
+
+		// Verify that ripoffFile.Rows contains rows from include_me but not from the excluded tables
+		hasIncludeMe := false
+		hasExcludeMe := false
+		hasAlsoExcludeMe := false
+
+		for rowId := range ripoffFile.Rows {
+			tableName := strings.Split(rowId, ":")
+			if len(tableName) > 0 {
+				if tableName[0] == "include_me" {
+					hasIncludeMe = true
+				}
+				if tableName[0] == "exclude_me" {
+					hasExcludeMe = true
+				}
+				if tableName[0] == "also_exclude_me" {
+					hasAlsoExcludeMe = true
+				}
+			}
+		}
+
+		// We should have rows from include_me
+		require.True(t, hasIncludeMe, "Expected to find rows from include_me table")
+		
+		// We should NOT have rows from exclude_me
+		require.False(t, hasExcludeMe, "Found rows from exclude_me table even though it was excluded")
+		
+		// We should NOT have rows from also_exclude_me
+		require.False(t, hasAlsoExcludeMe, "Found rows from also_exclude_me table even though it was excluded")
+
+		// Count rows to make sure we have the right number
+		includeCount := 0
+		excludeCount := 0
+		alsoExcludeCount := 0
+
+		for rowId := range ripoffFile.Rows {
+			tableName := strings.Split(rowId, ":")
+			if len(tableName) > 0 {
+				if tableName[0] == "include_me" {
+					includeCount++
+				}
+				if tableName[0] == "exclude_me" {
+					excludeCount++
+				}
+				if tableName[0] == "also_exclude_me" {
+					alsoExcludeCount++
+				}
+			}
+		}
+
+		require.Equal(t, 2, includeCount, "Expected 2 rows from include_me table")
+		require.Equal(t, 0, excludeCount, "Expected 0 rows from exclude_me table")
+		require.Equal(t, 0, alsoExcludeCount, "Expected 0 rows from also_exclude_me table")
+	})
 }

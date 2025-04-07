@@ -16,7 +16,8 @@ type RowMissingDependency struct {
 }
 
 // Exports all rows in the database to a ripoff file.
-func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
+// excludeTables is a list of table names to exclude from the export.
+func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string) (RipoffFile, error) {
 	ripoffFile := RipoffFile{
 		Rows: map[string]Row{},
 	}
@@ -26,11 +27,23 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx) (RipoffFile, error) {
 	if err != nil {
 		return ripoffFile, err
 	}
+	
+	// Remove excluded tables from the primary keys
+	for _, table := range excludeTables {
+		delete(primaryKeyResult, table)
+	}
+	
 	// We use foreign keys to reference other rows using the table_name:literal(...) syntax.
 	foreignKeyResult, err := getForeignKeysResult(ctx, tx)
 	if err != nil {
 		return ripoffFile, err
 	}
+	
+	// Remove excluded tables from foreign key results
+	for _, table := range excludeTables {
+		delete(foreignKeyResult, table)
+	}
+	
 	// A map from [table,column] -> ForeignKey for single column foreign keys.
 	singleColumnFkeyMap := map[[2]string]*ForeignKey{}
 	// A map from [table,constraintName,values] -> rowKey.

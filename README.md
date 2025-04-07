@@ -95,7 +95,14 @@ rows:
 
 An experimental command has been added to generate ripoff files from your database. This may be useful to users just starting to use ripoff who don't have so much fake data that templating is required yet.
 
-Currently, it attempts to export all data from all tables into a single ripoff file. In the future flags may be added to allow you to include/exclude tables, add arbitrary `WHERE` conditions, modify the row id/key, export multiple files, or use existing templates.
+Currently, it attempts to export all data from all tables into a single ripoff file. You can use the `--exclude` flag to exclude specific tables from the export:
+
+```bash
+# Export all tables except 'users' and 'audit_logs'
+ripoff-export --exclude users --exclude audit_logs /path/to/export
+```
+
+In the future, additional flags may be added to allow you to include tables, add arbitrary `WHERE` conditions, modify the row id/key, export multiple files, or use existing templates.
 
 ## Installation
 
