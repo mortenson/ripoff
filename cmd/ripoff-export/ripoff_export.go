@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -20,13 +21,21 @@ func errAttr(err error) slog.Attr {
 }
 
 func main() {
+	// Define flags
+	var excludeTables stringSliceFlag
+	flag.Var(&excludeTables, "exclude", "Exclude specific tables from export (can be specified multiple times)")
+	
+	// Parse flags
+	flag.Parse()
+	
 	dburl := os.Getenv("DATABASE_URL")
 	if dburl == "" {
 		slog.Error("DATABASE_URL env variable is required")
 		os.Exit(1)
 	}
 
-	if len(os.Args) != 2 {
+	args := flag.Args()
+	if len(args) != 1 {
 		slog.Error("Path to export directory is required")
 		os.Exit(1)
 	}
@@ -40,7 +49,7 @@ func main() {
 	}
 	defer conn.Close(ctx)
 
-	exportDirectory := path.Clean(os.Args[1])
+	exportDirectory := path.Clean(args[0])
 	dirInfo, err := os.Stat(exportDirectory)
 	if err == nil && !dirInfo.IsDir() {
 		slog.Error("Export directory is not a directory")
@@ -88,7 +97,8 @@ func main() {
 		}
 	}()
 
-	ripoffFile, err := ripoff.ExportToRipoff(ctx, tx)
+	// Pass the excluded tables to the export function
+	ripoffFile, err := ripoff.ExportToRipoff(ctx, tx, excludeTables)
 	if err != nil {
 		slog.Error("Could not assemble ripoff file from database", errAttr(err))
 		os.Exit(1)
@@ -110,4 +120,16 @@ func main() {
 	}
 
 	slog.Info(fmt.Sprintf("Ripoff export complete, %d rows exported", len(ripoffFile.Rows)))
+}
+
+// stringSliceFlag is a custom flag to support multiple --exclude flags
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string {
+	return fmt.Sprintf("%v", *s)
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
 }
