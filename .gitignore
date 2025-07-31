@@ -1,5 +1,6 @@
 .vscode
 tmp
 /ripoff
+/ripoff-export
 .DS_Store
 /export

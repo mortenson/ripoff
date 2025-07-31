@@ -164,6 +164,23 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 	columns := []string{}
 	values := []string{}
 	setStatements := []string{}
+	
+	// Extract ignore-on-update columns if present
+	ignoreOnUpdateColumns := map[string]bool{}
+	if ignoreOnUpdateRaw, hasIgnoreOnUpdate := row["~ignore_on_update"]; hasIgnoreOnUpdate {
+		switch v := ignoreOnUpdateRaw.(type) {
+		// Coming from yaml
+		case []interface{}:
+			for _, curr := range v {
+				ignoreOnUpdateColumns[curr.(string)] = true
+			}
+		// Coming from Go, probably a test
+		case []string:
+			for _, curr := range v {
+				ignoreOnUpdateColumns[curr] = true
+			}
+		}
+	}
 
 	onConflictColumn := ""
 	if hasPrimaryKeysForTable {
@@ -185,6 +202,10 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 	for column, valueRaw := range row {
 		// Backwards compatability weirdness.
 		if column == "~conflict" {
+			continue
+		}
+		// Ignore-on-update metadata, not a database column.
+		if column == "~ignore_on_update" {
 			continue
 		}
 		// Explicit dependencies, for foreign keys to non-primary keys.
@@ -212,7 +233,10 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 		if valueRaw == nil {
 			columns = append(columns, pq.QuoteIdentifier(column))
 			values = append(values, "NULL")
-			setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), "NULL"))
+			// Only add to setStatements if this column is not ignored on update
+			if !ignoreOnUpdateColumns[column] {
+				setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), "NULL"))
+			}
 		} else {
 			value := fmt.Sprint(valueRaw)
 
@@ -234,7 +258,10 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 				onConflictColumn = pq.QuoteIdentifier(column)
 			}
 			values = append(values, pq.QuoteLiteral(valuePrepared))
-			setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), pq.QuoteLiteral(valuePrepared)))
+			// Only add to setStatements if this column is not ignored on update
+			if !ignoreOnUpdateColumns[column] {
+				setStatements = append(setStatements, fmt.Sprintf("%s = %s", pq.QuoteIdentifier(column), pq.QuoteLiteral(valuePrepared)))
+			}
 		}
 	}
 

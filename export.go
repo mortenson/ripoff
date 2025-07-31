@@ -17,7 +17,16 @@ type RowMissingDependency struct {
 
 // Exports all rows in the database to a ripoff file.
 // excludeTables is a list of table names to exclude from the export.
-func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string) (RipoffFile, error) {
+// ignoreOnUpdateColumns is a list of column names to mark as ignored during updates.
+func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string, ignoreOnUpdateColumns []string) (RipoffFile, error) {
+	return ExportToRipoffWithExisting(ctx, tx, excludeTables, ignoreOnUpdateColumns, nil)
+}
+
+// ExportToRipoffWithExisting exports all rows in the database to a ripoff file, preserving existing values for ignore-on-update columns.
+// excludeTables is a list of table names to exclude from the export.
+// ignoreOnUpdateColumns is a list of column names to mark as ignored during updates.
+// existingData is optional existing YAML data to preserve ignore-on-update column values from.
+func ExportToRipoffWithExisting(ctx context.Context, tx pgx.Tx, excludeTables []string, ignoreOnUpdateColumns []string, existingData *RipoffFile) (RipoffFile, error) {
 	ripoffFile := RipoffFile{
 		Rows: map[string]Row{},
 	}
@@ -90,7 +99,17 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string) (Rip
 			// A map of fieldName -> tableName to convert values to literal:(...)
 			literalFields := map[string]string{}
 			ids := []string{}
+			// Track columns that should be ignored on update
+			var ignoreOnUpdateFields []string
 			for i, field := range fields {
+				// Check if this column should be ignored on update
+				for _, ignoreCol := range ignoreOnUpdateColumns {
+					if field.Name == ignoreCol {
+						ignoreOnUpdateFields = append(ignoreOnUpdateFields, field.Name)
+						break
+					}
+				}
+				
 				// Null columns are still exported since we don't know if there is a default or not (at least not at time of writing).
 				if columns[i] == nil {
 					ripoffRow[field.Name] = nil
@@ -172,6 +191,23 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string) (Rip
 			for fieldName, toTable := range literalFields {
 				ripoffRow[fieldName] = fmt.Sprintf("%s:literal(%s)", toTable, ripoffRow[fieldName])
 			}
+			// Add ignore-on-update metadata if any columns should be ignored
+			if len(ignoreOnUpdateFields) > 0 {
+				ripoffRow["~ignore_on_update"] = ignoreOnUpdateFields
+			}
+			
+			// Preserve existing values for ignore-on-update columns if existing data is provided
+			if existingData != nil {
+				if existingRow, exists := existingData.Rows[rowKey]; exists {
+					for _, ignoreCol := range ignoreOnUpdateColumns {
+						if existingValue, hasExistingValue := existingRow[ignoreCol]; hasExistingValue {
+							// Preserve the existing value instead of using the current database value
+							ripoffRow[ignoreCol] = existingValue
+						}
+					}
+				}
+			}
+			
 			ripoffFile.Rows[rowKey] = ripoffRow
 		}
 	}

@@ -102,6 +102,15 @@ Currently, it attempts to export all data from all tables into a single ripoff f
 ripoff-export --exclude users --exclude audit_logs /path/to/export
 ```
 
+You can also use the `--ignore-on-update` flag to mark columns that should be ignored during subsequent imports (useful for timestamps that shouldn't change):
+
+```bash
+# Export all data but ignore created_at and updated_at columns during updates
+ripoff-export --ignore-on-update created_at --ignore-on-update updated_at /path/to/export
+```
+
+This adds a `~ignore_on_update` metadata field to rows containing the specified columns. During import, these columns will be included for new rows but ignored when updating existing rows, preventing timestamp-only changes from triggering unnecessary updates.
+
 In the future, additional flags may be added to allow you to include tables, add arbitrary `WHERE` conditions, modify the row id/key, export multiple files, or use existing templates.
 
 ## Installation

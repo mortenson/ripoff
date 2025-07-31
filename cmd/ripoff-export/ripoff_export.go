@@ -23,7 +23,9 @@ func errAttr(err error) slog.Attr {
 func main() {
 	// Define flags
 	var excludeTables stringSliceFlag
+	var ignoreOnUpdateColumns stringSliceFlag
 	flag.Var(&excludeTables, "exclude", "Exclude specific tables from export (can be specified multiple times)")
+	flag.Var(&ignoreOnUpdateColumns, "ignore-on-update", "Columns to ignore during updates but include in initial export (can be specified multiple times)")
 	
 	// Parse flags
 	flag.Parse()
@@ -54,6 +56,33 @@ func main() {
 	if err == nil && !dirInfo.IsDir() {
 		slog.Error("Export directory is not a directory")
 		os.Exit(1)
+	}
+
+	// Load existing data if ignore-on-update is specified and directory exists
+	var existingData *ripoff.RipoffFile
+	if len(ignoreOnUpdateColumns) > 0 && err == nil && !os.IsNotExist(err) {
+		// Directory exists and we have ignore-on-update columns, try to load existing data
+		slog.Info("Loading existing YAML data to preserve ignore-on-update column values")
+		// We need a temporary transaction to load enums
+		tempTx, tempErr := conn.Begin(ctx)
+		if tempErr != nil {
+			slog.Error("Could not create temporary transaction for loading existing data", errAttr(tempErr))
+			os.Exit(1)
+		}
+		enums, tempErr := ripoff.GetEnumValues(ctx, tempTx)
+		tempTx.Rollback(ctx) // Clean up temp transaction
+		if tempErr != nil {
+			slog.Error("Could not load enums for existing data", errAttr(tempErr))
+			os.Exit(1)
+		}
+		existingRipoff, tempErr := ripoff.RipoffFromDirectory(exportDirectory, enums)
+		if tempErr != nil {
+			slog.Warn("Could not load existing YAML data, will use fresh database values", errAttr(tempErr))
+			existingData = nil
+		} else {
+			existingData = &existingRipoff
+			slog.Info(fmt.Sprintf("Loaded existing data with %d rows", len(existingData.Rows)))
+		}
 	}
 
 	// Directory exists, delete it after verifying that it's safe to do so.
@@ -97,8 +126,9 @@ func main() {
 		}
 	}()
 
-	// Pass the excluded tables to the export function
-	ripoffFile, err := ripoff.ExportToRipoff(ctx, tx, excludeTables)
+	// Pass the excluded tables and ignore-on-update columns to the export function
+	// Use ExportToRipoffWithExisting to preserve ignore-on-update column values
+	ripoffFile, err := ripoff.ExportToRipoffWithExisting(ctx, tx, excludeTables, ignoreOnUpdateColumns, existingData)
 	if err != nil {
 		slog.Error("Could not assemble ripoff file from database", errAttr(err))
 		os.Exit(1)
