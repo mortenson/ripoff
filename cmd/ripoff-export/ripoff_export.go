@@ -70,7 +70,7 @@ func main() {
 			os.Exit(1)
 		}
 		enums, tempErr := ripoff.GetEnumValues(ctx, tempTx)
-		tempTx.Rollback(ctx) // Clean up temp transaction
+		_ = tempTx.Rollback(ctx) // Clean up temp transaction, ignore error since it's temporary
 		if tempErr != nil {
 			slog.Error("Could not load enums for existing data", errAttr(tempErr))
 			os.Exit(1)
