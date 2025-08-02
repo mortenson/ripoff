@@ -334,23 +334,25 @@ func TestExcludeColumnsFlag(t *testing.T) {
 		}
 	})
 
-	// Test 2: Exclude table-specific column (users.email)
+	// Test 2: Exclude table-specific column (users.created_at) - shared column name
 	t.Run("Table-specific column exclusion", func(t *testing.T) {
-		ripoffFile, err := ExportToRipoff(ctx, tx, []string{}, []string{"users.email"})
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{}, []string{"users.created_at"})
 		require.NoError(t, err)
 
-		// Verify that user rows don't have email but post rows still have all columns
+		// Verify that user rows don't have created_at but post rows still have created_at
 		for rowId, row := range ripoffFile.Rows {
 			tableName := strings.Split(rowId, ":")[0]
 			switch tableName {
 			case "users":
-				_, hasEmail := row["email"]
-				require.False(t, hasEmail, "User row %s should not have email column", rowId)
+				_, hasCreatedAt := row["created_at"]
+				require.False(t, hasCreatedAt, "User row %s should not have created_at column", rowId)
 				// Should still have other columns
 				_, hasName := row["name"]
+				_, hasEmail := row["email"]
 				require.True(t, hasName, "User row %s should have name column", rowId)
+				require.True(t, hasEmail, "User row %s should have email column", rowId)
 			case "posts":
-				// Posts should have all columns including created_at/updated_at since only users.email was excluded
+				// Posts should have created_at since only users.created_at was excluded
 				_, hasTitle := row["title"]
 				_, hasCreatedAt := row["created_at"]
 				require.True(t, hasTitle, "Post row %s should have title column", rowId)

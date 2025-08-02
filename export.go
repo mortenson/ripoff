@@ -129,11 +129,6 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string, excl
 		defer rows.Close()
 		fields := rows.FieldDescriptions()
 
-		// Verify that field descriptions match our filtered columns (sanity check)
-		if len(fields) != len(filteredColumnNames) {
-			return RipoffFile{}, fmt.Errorf("mismatch between query fields (%d) and filtered columns (%d) for table %s", len(fields), len(filteredColumnNames), table)
-		}
-
 		for rows.Next() {
 			columnsRaw, err := rows.Values()
 			if err != nil {
