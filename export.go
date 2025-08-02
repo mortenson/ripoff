@@ -108,11 +108,9 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string, excl
 	for table, primaryKeys := range primaryKeyResult {
 		// Filter out excluded columns from the foreign key result columns
 		var filteredColumns []string
-		var filteredColumnNames []string
 		for _, column := range foreignKeyResult[table].Columns {
 			if !shouldExcludeColumn(table, column, tableSpecificExclusions, globalColumnExclusions) {
 				filteredColumns = append(filteredColumns, fmt.Sprintf("CAST(%s AS TEXT)", pq.QuoteIdentifier(column)))
-				filteredColumnNames = append(filteredColumnNames, column)
 			}
 		}
 
