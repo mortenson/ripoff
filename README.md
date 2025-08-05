@@ -95,12 +95,33 @@ rows:
 
 An experimental command has been added to generate ripoff files from your database. This may be useful to users just starting to use ripoff who don't have so much fake data that templating is required yet.
 
-Currently, it attempts to export all data from all tables into a single ripoff file. You can use the `--exclude` flag to exclude specific tables from the export:
+Currently, it attempts to export all data from all tables into a single ripoff file. You can use the `--exclude` flag to exclude specific tables from the export, and the `--exclude-columns` flag to exclude specific columns:
 
 ```bash
 # Export all tables except 'users' and 'audit_logs'
 ripoff-export --exclude users --exclude audit_logs /path/to/export
+
+# Exclude created_at and updated_at columns from all tables
+ripoff-export --exclude-columns created_at --exclude-columns updated_at /path/to/export
+
+# Exclude email column only from users table
+ripoff-export --exclude-columns users.email /path/to/export
+
+# Combine exclusions: exclude created_at globally and email from users table
+ripoff-export --exclude-columns created_at --exclude-columns users.email /path/to/export
+
+# Combine table and column exclusions
+ripoff-export --exclude audit_logs --exclude-columns created_at --exclude-columns users.email /path/to/export
 ```
+
+## Column Exclusion Format
+
+The `--exclude-columns` flag accepts two formats:
+
+- `table.column` - Excludes a specific column from a specific table
+- `column` - Excludes the column from ALL tables
+
+The latter format is especially useful if you have generated columns on every table like `created_at` or `updated_at` to avoid noisy updates when you re-export your data.
 
 In the future, additional flags may be added to allow you to include tables, add arbitrary `WHERE` conditions, modify the row id/key, export multiple files, or use existing templates.
 

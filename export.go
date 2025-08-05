@@ -10,6 +10,48 @@ import (
 	"github.com/lib/pq"
 )
 
+// parseColumnExclusions parses column exclusion specifications and returns
+// table-specific exclusions and global column exclusions.
+func parseColumnExclusions(excludeColumns []string) (map[string][]string, []string) {
+	tableSpecific := make(map[string][]string)
+	var globalColumns []string
+
+	for _, spec := range excludeColumns {
+		parts := strings.SplitN(spec, ".", 2)
+		if len(parts) == 2 {
+			// table.column format
+			table, column := parts[0], parts[1]
+			tableSpecific[table] = append(tableSpecific[table], column)
+		} else {
+			// column format - applies to all tables
+			globalColumns = append(globalColumns, spec)
+		}
+	}
+
+	return tableSpecific, globalColumns
+}
+
+// shouldExcludeColumn checks if a column should be excluded based on exclusion rules.
+func shouldExcludeColumn(table, column string, tableSpecific map[string][]string, globalColumns []string) bool {
+	// Check global column exclusions
+	for _, globalCol := range globalColumns {
+		if column == globalCol {
+			return true
+		}
+	}
+
+	// Check table-specific exclusions
+	if excludedCols, exists := tableSpecific[table]; exists {
+		for _, excludedCol := range excludedCols {
+			if column == excludedCol {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 type RowMissingDependency struct {
 	Row              Row
 	ConstraintMapKey [3]string
@@ -17,33 +59,38 @@ type RowMissingDependency struct {
 
 // Exports all rows in the database to a ripoff file.
 // excludeTables is a list of table names to exclude from the export.
-func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string) (RipoffFile, error) {
+// excludeColumns is a list of column specifications to exclude from the export.
+// Format: "table.column" (exclude column from specific table) or "column" (exclude column from all tables).
+func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string, excludeColumns []string) (RipoffFile, error) {
 	ripoffFile := RipoffFile{
 		Rows: map[string]Row{},
 	}
+
+	// Parse column exclusions
+	tableSpecificExclusions, globalColumnExclusions := parseColumnExclusions(excludeColumns)
 
 	// We use primary keys to determine what columns to use as row keys.
 	primaryKeyResult, err := getPrimaryKeys(ctx, tx)
 	if err != nil {
 		return ripoffFile, err
 	}
-	
+
 	// Remove excluded tables from the primary keys
 	for _, table := range excludeTables {
 		delete(primaryKeyResult, table)
 	}
-	
+
 	// We use foreign keys to reference other rows using the table_name:literal(...) syntax.
 	foreignKeyResult, err := getForeignKeysResult(ctx, tx)
 	if err != nil {
 		return ripoffFile, err
 	}
-	
+
 	// Remove excluded tables from foreign key results
 	for _, table := range excludeTables {
 		delete(foreignKeyResult, table)
 	}
-	
+
 	// A map from [table,column] -> ForeignKey for single column foreign keys.
 	singleColumnFkeyMap := map[[2]string]*ForeignKey{}
 	// A map from [table,constraintName,values] -> rowKey.
@@ -59,18 +106,27 @@ func ExportToRipoff(ctx context.Context, tx pgx.Tx, excludeTables []string) (Rip
 	missingDependencies := []RowMissingDependency{}
 
 	for table, primaryKeys := range primaryKeyResult {
-		columns := make([]string, len(foreignKeyResult[table].Columns))
-		// Due to yaml limitations, ripoff treats all data as nullable text on import and export.
-		for i, column := range foreignKeyResult[table].Columns {
-			columns[i] = fmt.Sprintf("CAST(%s AS TEXT)", pq.QuoteIdentifier(column))
+		// Filter out excluded columns from the foreign key result columns
+		var filteredColumns []string
+		for _, column := range foreignKeyResult[table].Columns {
+			if !shouldExcludeColumn(table, column, tableSpecificExclusions, globalColumnExclusions) {
+				filteredColumns = append(filteredColumns, fmt.Sprintf("CAST(%s AS TEXT)", pq.QuoteIdentifier(column)))
+			}
 		}
-		selectQuery := fmt.Sprintf("SELECT %s FROM %s;", strings.Join(columns, ", "), pq.QuoteIdentifier(table))
+
+		// Skip table if no columns remain after filtering
+		if len(filteredColumns) == 0 {
+			continue
+		}
+
+		selectQuery := fmt.Sprintf("SELECT %s FROM %s;", strings.Join(filteredColumns, ", "), pq.QuoteIdentifier(table))
 		rows, err := tx.Query(ctx, selectQuery)
 		if err != nil {
 			return RipoffFile{}, err
 		}
 		defer rows.Close()
 		fields := rows.FieldDescriptions()
+
 		for rows.Next() {
 			columnsRaw, err := rows.Values()
 			if err != nil {

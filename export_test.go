@@ -23,7 +23,7 @@ func runExportTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir str
 	require.NoError(t, err)
 
 	// Generate new ripoff file.
-	ripoffFile, err := ExportToRipoff(ctx, tx, []string{})
+	ripoffFile, err := ExportToRipoff(ctx, tx, []string{}, []string{})
 	require.NoError(t, err)
 
 	// Ensure ripoff file matches expected output.
@@ -140,7 +140,7 @@ func TestExcludeFlag(t *testing.T) {
 
 	// Test 1: Exclude a single table
 	t.Run("Single exclude", func(t *testing.T) {
-		ripoffFile, err := ExportToRipoff(ctx, tx, []string{"exclude_me"})
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{"exclude_me"}, []string{})
 		require.NoError(t, err)
 
 		// Verify that ripoffFile.Rows contains rows from include_me but not exclude_me
@@ -165,10 +165,10 @@ func TestExcludeFlag(t *testing.T) {
 
 		// We should have rows from include_me
 		require.True(t, hasIncludeMe, "Expected to find rows from include_me table")
-		
+
 		// We should NOT have rows from exclude_me
 		require.False(t, hasExcludeMe, "Found rows from exclude_me table even though it was excluded")
-		
+
 		// We should have rows from also_exclude_me (since it wasn't excluded in this test)
 		require.True(t, hasAlsoExcludeMe, "Expected to find rows from also_exclude_me table")
 
@@ -199,7 +199,7 @@ func TestExcludeFlag(t *testing.T) {
 
 	// Test 2: Exclude multiple tables
 	t.Run("Multiple excludes", func(t *testing.T) {
-		ripoffFile, err := ExportToRipoff(ctx, tx, []string{"exclude_me", "also_exclude_me"})
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{"exclude_me", "also_exclude_me"}, []string{})
 		require.NoError(t, err)
 
 		// Verify that ripoffFile.Rows contains rows from include_me but not from the excluded tables
@@ -224,10 +224,10 @@ func TestExcludeFlag(t *testing.T) {
 
 		// We should have rows from include_me
 		require.True(t, hasIncludeMe, "Expected to find rows from include_me table")
-		
+
 		// We should NOT have rows from exclude_me
 		require.False(t, hasExcludeMe, "Found rows from exclude_me table even though it was excluded")
-		
+
 		// We should NOT have rows from also_exclude_me
 		require.False(t, hasAlsoExcludeMe, "Found rows from also_exclude_me table even though it was excluded")
 
@@ -254,5 +254,143 @@ func TestExcludeFlag(t *testing.T) {
 		require.Equal(t, 2, includeCount, "Expected 2 rows from include_me table")
 		require.Equal(t, 0, excludeCount, "Expected 0 rows from exclude_me table")
 		require.Equal(t, 0, alsoExcludeCount, "Expected 0 rows from also_exclude_me table")
+	})
+}
+
+// TestExcludeColumnsFlag tests that the exclude-columns flag properly excludes columns from export
+func TestExcludeColumnsFlag(t *testing.T) {
+	envUrl := os.Getenv("RIPOFF_TEST_DATABASE_URL")
+	if envUrl == "" {
+		envUrl = "postgres:///ripoff-test-db"
+	}
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, envUrl)
+	if err != nil {
+		require.NoError(t, err)
+	}
+	defer conn.Close(ctx)
+
+	// Start a transaction that we'll roll back at the end
+	tx, err := conn.Begin(ctx)
+	require.NoError(t, err)
+	defer func() {
+		err := tx.Rollback(ctx)
+		require.NoError(t, err)
+	}()
+
+	// Create test tables with timestamped columns
+	_, err = tx.Exec(ctx, `
+		CREATE TABLE users (
+			id SERIAL PRIMARY KEY,
+			name TEXT,
+			email TEXT,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);
+		
+		CREATE TABLE posts (
+			id SERIAL PRIMARY KEY,
+			title TEXT,
+			content TEXT,
+			user_id INTEGER REFERENCES users(id),
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);
+		
+		INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com'), ('Bob', 'bob@example.com');
+		INSERT INTO posts (title, content, user_id) VALUES 
+			('Post 1', 'Content 1', 1), 
+			('Post 2', 'Content 2', 1),
+			('Post 3', 'Content 3', 2);
+	`)
+	require.NoError(t, err)
+
+	// Test 1: Exclude global columns (created_at, updated_at)
+	t.Run("Global column exclusion", func(t *testing.T) {
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{}, []string{"created_at", "updated_at"})
+		require.NoError(t, err)
+
+		// Verify that no row contains created_at or updated_at columns
+		for rowId, row := range ripoffFile.Rows {
+			_, hasCreatedAt := row["created_at"]
+			_, hasUpdatedAt := row["updated_at"]
+			require.False(t, hasCreatedAt, "Row %s should not have created_at column", rowId)
+			require.False(t, hasUpdatedAt, "Row %s should not have updated_at column", rowId)
+
+			// But should still have other columns
+			tableName := strings.Split(rowId, ":")[0]
+			switch tableName {
+			case "users":
+				_, hasName := row["name"]
+				_, hasEmail := row["email"]
+				require.True(t, hasName, "Row %s should have name column", rowId)
+				require.True(t, hasEmail, "Row %s should have email column", rowId)
+			case "posts":
+				_, hasTitle := row["title"]
+				_, hasContent := row["content"]
+				require.True(t, hasTitle, "Row %s should have title column", rowId)
+				require.True(t, hasContent, "Row %s should have content column", rowId)
+			}
+		}
+	})
+
+	// Test 2: Exclude table-specific column (users.created_at) - shared column name
+	t.Run("Table-specific column exclusion", func(t *testing.T) {
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{}, []string{"users.created_at"})
+		require.NoError(t, err)
+
+		// Verify that user rows don't have created_at but post rows still have created_at
+		for rowId, row := range ripoffFile.Rows {
+			tableName := strings.Split(rowId, ":")[0]
+			switch tableName {
+			case "users":
+				_, hasCreatedAt := row["created_at"]
+				require.False(t, hasCreatedAt, "User row %s should not have created_at column", rowId)
+				// Should still have other columns
+				_, hasName := row["name"]
+				_, hasEmail := row["email"]
+				require.True(t, hasName, "User row %s should have name column", rowId)
+				require.True(t, hasEmail, "User row %s should have email column", rowId)
+			case "posts":
+				// Posts should have created_at since only users.created_at was excluded
+				_, hasTitle := row["title"]
+				_, hasCreatedAt := row["created_at"]
+				require.True(t, hasTitle, "Post row %s should have title column", rowId)
+				require.True(t, hasCreatedAt, "Post row %s should have created_at column", rowId)
+			}
+		}
+	})
+
+	// Test 3: Combine both exclusion types
+	t.Run("Combined exclusions", func(t *testing.T) {
+		ripoffFile, err := ExportToRipoff(ctx, tx, []string{}, []string{"created_at", "users.email"})
+		require.NoError(t, err)
+
+		// Verify exclusions are applied correctly
+		for rowId, row := range ripoffFile.Rows {
+			tableName := strings.Split(rowId, ":")[0]
+
+			// No row should have created_at (global exclusion)
+			_, hasCreatedAt := row["created_at"]
+			require.False(t, hasCreatedAt, "Row %s should not have created_at column", rowId)
+
+			switch tableName {
+			case "users":
+				// Users should not have email (table-specific exclusion)
+				_, hasEmail := row["email"]
+				require.False(t, hasEmail, "User row %s should not have email column", rowId)
+				// But should have name and updated_at
+				_, hasName := row["name"]
+				_, hasUpdatedAt := row["updated_at"]
+				require.True(t, hasName, "User row %s should have name column", rowId)
+				require.True(t, hasUpdatedAt, "User row %s should have updated_at column", rowId)
+			case "posts":
+				// Posts should have all columns except created_at
+				_, hasTitle := row["title"]
+				_, hasUpdatedAt := row["updated_at"]
+				require.True(t, hasTitle, "Post row %s should have title column", rowId)
+				require.True(t, hasUpdatedAt, "Post row %s should have updated_at column", rowId)
+			}
+		}
 	})
 }

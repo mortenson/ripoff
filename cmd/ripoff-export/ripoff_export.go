@@ -23,11 +23,13 @@ func errAttr(err error) slog.Attr {
 func main() {
 	// Define flags
 	var excludeTables stringSliceFlag
+	var excludeColumns stringSliceFlag
 	flag.Var(&excludeTables, "exclude", "Exclude specific tables from export (can be specified multiple times)")
-	
+	flag.Var(&excludeColumns, "exclude-columns", "Exclude specific columns from export. Format: 'table.column' or 'column' (can be specified multiple times)")
+
 	// Parse flags
 	flag.Parse()
-	
+
 	dburl := os.Getenv("DATABASE_URL")
 	if dburl == "" {
 		slog.Error("DATABASE_URL env variable is required")
@@ -97,8 +99,8 @@ func main() {
 		}
 	}()
 
-	// Pass the excluded tables to the export function
-	ripoffFile, err := ripoff.ExportToRipoff(ctx, tx, excludeTables)
+	// Pass the excluded tables and columns to the export function
+	ripoffFile, err := ripoff.ExportToRipoff(ctx, tx, excludeTables, excludeColumns)
 	if err != nil {
 		slog.Error("Could not assemble ripoff file from database", errAttr(err))
 		os.Exit(1)
