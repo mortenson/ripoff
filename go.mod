@@ -1,8 +1,8 @@
 module github.com/mortenson/ripoff
 
-go 1.22
+go 1.26
 
-toolchain go1.22.4
+toolchain go1.26.0
 
 require (
 	github.com/brianvoe/gofakeit/v7 v7.0.4
