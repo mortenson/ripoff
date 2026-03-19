@@ -21,12 +21,18 @@ import (
 
 // Runs ripoff from start to finish, without committing the transaction.
 func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
+	manager, err := NewPluginManager(totalRipoff.Plugins)
+	if err != nil {
+		return err
+	}
+	defer manager.Close()
+
 	primaryKeys, err := getPrimaryKeys(ctx, tx)
 	if err != nil {
 		return err
 	}
 
-	queries, err := buildQueriesForRipoff(primaryKeys, totalRipoff)
+	queries, err := buildQueriesForRipoff(manager, primaryKeys, totalRipoff)
 	if err != nil {
 		return err
 	}
@@ -111,7 +117,7 @@ func GetEnumValues(ctx context.Context, tx pgx.Tx) (EnumValuesResult, error) {
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)
 var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:[a-zA-Z]+\(`)
 
-func prepareValue(rawValue string) (string, error) {
+func prepareValue(manager *PluginManager, rawValue string) (string, error) {
 	valueFuncMatches := valueFuncRegex.FindStringSubmatch(rawValue)
 	if len(valueFuncMatches) != 3 {
 		return rawValue, nil
@@ -119,6 +125,10 @@ func prepareValue(rawValue string) (string, error) {
 	methodName := valueFuncMatches[1]
 	value := valueFuncMatches[2]
 	valueParts := strings.Split(strings.ReplaceAll(" ", "", valueFuncMatches[2]), ",")
+
+	if manager.Supports(methodName) {
+		return manager.Call(methodName, valueParts...)
+	}
 
 	// Create a new random seed based on a sha256 hash of the value.
 	h := sha256.New()
@@ -153,7 +163,7 @@ func prepareValue(rawValue string) (string, error) {
 	return fakerResult, nil
 }
 
-func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, dependencyGraph map[string][]string) (string, error) {
+func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, rowId string, row Row, dependencyGraph map[string][]string) (string, error) {
 	parts := strings.Split(rowId, ":")
 	if len(parts) < 2 {
 		return "", fmt.Errorf("invalid id: %s", rowId)
@@ -225,7 +235,7 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 			}
 
 			columns = append(columns, pq.QuoteIdentifier(column))
-			valuePrepared, err := prepareValue(value)
+			valuePrepared, err := prepareValue(manager, value)
 			if err != nil {
 				return "", err
 			}
@@ -257,7 +267,7 @@ func buildQueryForRow(primaryKeys PrimaryKeysResult, rowId string, row Row, depe
 }
 
 // Returns a sorted array of queries to run based on a given ripoff file.
-func buildQueriesForRipoff(primaryKeys PrimaryKeysResult, totalRipoff RipoffFile) ([]string, error) {
+func buildQueriesForRipoff(manager *PluginManager, primaryKeys PrimaryKeysResult, totalRipoff RipoffFile) ([]string, error) {
 	dependencyGraph := map[string][]string{}
 	queries := map[string]string{}
 
@@ -268,7 +278,7 @@ func buildQueriesForRipoff(primaryKeys PrimaryKeysResult, totalRipoff RipoffFile
 
 	// Build queries.
 	for rowId, row := range totalRipoff.Rows {
-		query, err := buildQueryForRow(primaryKeys, rowId, row, dependencyGraph)
+		query, err := buildQueryForRow(manager, primaryKeys, rowId, row, dependencyGraph)
 		if err != nil {
 			return []string{}, err
 		}

@@ -125,6 +125,14 @@ The latter format is especially useful if you have generated columns on every ta
 
 In the future, additional flags may be added to allow you to include tables, add arbitrary `WHERE` conditions, modify the row id/key, export multiple files, or use existing templates.
 
+## Plugins
+
+### Re-build example plugin
+
+```bash
+GOOS=wasip1 GOARCH=wasm go build -o testdata/plugins/hellowasm/hellowasm.wasm testdata/plugins/hellowasm/hellowasm.go
+```
+
 ## Installation
 
 1. Run `go install github.com/mortenson/ripoff/cmd/ripoff-export@latest`

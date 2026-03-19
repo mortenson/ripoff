@@ -38,6 +38,8 @@ func runExportTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir str
 	expectedRipoffFile := &RipoffFile{}
 	err = yaml.Unmarshal(expectedRipoffYaml, expectedRipoffFile)
 	require.NoError(t, err)
+	expectedRipoffFile.Plugins = nil
+	newRipoffFile.Plugins = nil
 	require.Equal(t, expectedRipoffFile, newRipoffFile)
 
 	// Wipe database.
