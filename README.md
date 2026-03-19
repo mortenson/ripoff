@@ -127,10 +127,73 @@ In the future, additional flags may be added to allow you to include tables, add
 
 ## Plugins
 
-### Re-build example plugin
+If you would like to implement your own `valueFuncs`, you can do so by writing a ripoff plugin.
 
-```bash
-GOOS=wasip1 GOARCH=wasm go build -o testdata/plugins/hellowasm/hellowasm.wasm testdata/plugins/hellowasm/hellowasm.go
+Plugins are local unauthenticated TCP servers that consume and emit newline-separated JSON messages from ripoff.
+
+### Writing a plugin
+
+Plugins must listen to a local TCP port and provide a TCP stream (loop of receiving and sending messages) to clients.
+
+On startup, plugins must output the string `READY` in its first line of output to indicate to ripoff that it is ready to receive TCP messges.
+
+Each incoming message will be a single line of JSON in the following types:
+
+#### Return a value
+
+Your plugin must process an arbitrary `valueFunc` and return a string value. You can decide how to handle functions you do not expect/provide, by either returning an empty value or disconnecting the client.
+
+Message from ripoff:
+
+```json
+{"type": "valueFunc", "valueFunc": "someFuncName", "args": ["some", "argument", "list"]}
+```
+
+Response from your TCP server:
+
+```json
+{"value": "someString"}
+```
+
+#### Exit your process
+
+Ripoff will send a kill signal to your process, but if you'd like to clean up before that an exit message will be sent beforehand.
+
+Request message:
+
+```json
+{"type": "exit"}
+```
+
+#### Example
+
+An example plugin can be found at `cmd/helloplugin/helloplugin.go`. although TCP servers in other languages may be much easier to implement.
+
+### Using a plugin
+
+Plugins are defined in your ripoff files, which instruct ripoff to spawn a process to start your TCP server, then later connect to it with a single TCP stream. Here's an example from ripoff's tests:
+
+```yml
+# A list of plugins to register with ripoff.
+plugins:
+  # An arbitrary name for the plugin. Used only to handle merging ripoff files
+  # that may define duplicate plugins, which would otherwise conflict.
+  helloplugin:
+    # An arbitrary command to execute, which should start your TCP server.
+    # The command must output READY in its first line of stdout.
+    command: [go, run, cmd/helloplugin/helloplugin.go]
+    # A TCP address to connect to after your command is ready. Note that a
+    # single connection is used to avoid a handshake per valueFunc call.
+    address: localhost:6767
+    # The list of valueFuncs this plugin provides. If ripoff encounters these
+    # it will call out to your plugin. Note that these take precedence over
+    # built in valueFuncs, so you can override ripoff's defaults (like uuid()).
+    valueFuncs: [sayHello]
+rows:
+  users:uuid(fooBar):
+    # In your ripoff files, you can now call your plugin's registered
+    # valueFuncs the same as any other valueFunc.
+    name: sayHello(World)
 ```
 
 ## Installation
