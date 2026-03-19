@@ -44,7 +44,12 @@ func main() {
 		slog.Error("Could not connect to database", errAttr(err))
 		os.Exit(1)
 	}
-	defer conn.Close(ctx)
+	defer func() {
+		err := conn.Close(ctx)
+		if err != nil {
+			slog.Error("Could not close database connection", errAttr(err))
+		}
+	}()
 
 	tx, err := conn.Begin(ctx)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"os/exec"
 	"strings"
@@ -18,16 +19,24 @@ type PluginManager struct {
 }
 
 func (m *PluginManager) Close() {
-	// Ignore errors
 	for _, conn := range m.connections {
 		message, _ := json.Marshal(Request{
 			Type: "exit",
 		})
-		conn.Write(append(message, '\n'))
-		conn.Close()
+		_, err := conn.Write(append(message, '\n'))
+		if err != nil {
+			slog.Error("Could not write exit message to plugn connection", slog.Any("error", err))
+		}
+		err = conn.Close()
+		if err != nil {
+			slog.Error("Could not close plugin connection", slog.Any("error", err))
+		}
 	}
 	for _, cmd := range m.spawnedCommands {
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if err != nil {
+			slog.Error("Could not kill process", slog.Any("command", cmd), slog.Any("error", err))
+		}
 	}
 }
 
@@ -66,11 +75,17 @@ func spawn(command []string) (*exec.Cmd, error) {
 	line := scanner.Text()
 	// Set deadline for outputting READY message
 	timer := time.AfterFunc(5*time.Second, func() {
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if err != nil {
+			slog.Error("Could not kill plugin after READY timeout", slog.Any("error", err))
+		}
 	})
 	if !strings.Contains(string(line), "READY") {
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		return nil, fmt.Errorf("Plugin command '%s' failed to output READY. Got: '%s' instead", strings.Join(command, " "), line)
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if err != nil {
+			slog.Error("Could not kill plugin after seeing it did not output READY", slog.Any("error", err))
+		}
+		return nil, fmt.Errorf("plugin command '%s' failed to output READY. Got: '%s' instead", strings.Join(command, " "), line)
 	}
 	// Stop the timeout kill
 	timer.Stop()
@@ -88,7 +103,7 @@ func connect(address string) (net.Conn, error) {
 func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 	plugin, hasPlugin := m.valueFuncMap[valueFunc]
 	if !hasPlugin {
-		return "", fmt.Errorf("Plugin for valueFunc %s is not defined", valueFunc)
+		return "", fmt.Errorf("plugin for valueFunc %s is not defined", valueFunc)
 	}
 	conn, ok := m.connections[valueFunc]
 	// Attempt to start process and wait for port to open
@@ -105,7 +120,10 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 		m.connections[valueFunc] = conn
 	}
 	// Send message to open TCP socket
-	conn.SetReadDeadline(time.Now().Add(time.Second))
+	err := conn.SetReadDeadline(time.Now().Add(time.Second))
+	if err != nil {
+		slog.Error("Could not set read deadline for plugin connection", slog.Any("error", err))
+	}
 	scanner := bufio.NewScanner(conn)
 	message, err := json.Marshal(Request{
 		Type:      "valueFunc",
@@ -120,7 +138,7 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 		return "", err
 	}
 	if !scanner.Scan() {
-		return "", fmt.Errorf("Plugin command '%s' failed to response to TCP message: %v", strings.Join(plugin.Command, " "), scanner.Err())
+		return "", fmt.Errorf("plugin command '%s' failed to response to TCP message: %v", strings.Join(plugin.Command, " "), scanner.Err())
 	}
 	line := scanner.Bytes()
 	response := Response{}
@@ -139,12 +157,12 @@ func NewPluginManager(plugins map[string]RipoffPlugin) (*PluginManager, error) {
 	}
 	for pluginName, plugin := range plugins {
 		if len(plugin.Command) == 0 {
-			return nil, fmt.Errorf("Cannot create new PluginManager - the plugin %s does not define a command.", pluginName)
+			return nil, fmt.Errorf("cannot create new PluginManager - the plugin %s does not define a command", pluginName)
 		}
 		for _, valueFunc := range plugin.ValueFuncs {
 			_, alreadySet := m.valueFuncMap[valueFunc]
 			if alreadySet {
-				return nil, fmt.Errorf("Cannot create new PluginManager - the valueFunc %s is set in more than one plugin.", valueFunc)
+				return nil, fmt.Errorf("cannot create new PluginManager - the valueFunc %s is set in more than one plugin", valueFunc)
 			}
 			m.valueFuncMap[valueFunc] = plugin
 		}

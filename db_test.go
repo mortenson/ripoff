@@ -64,10 +64,11 @@ func TestRipoff(t *testing.T) {
 	}
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, envUrl)
-	if err != nil {
+	require.NoError(t, err)
+	defer func() {
+		err := conn.Close(ctx)
 		require.NoError(t, err)
-	}
-	defer conn.Close(ctx)
+	}()
 
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "testdata", "import")

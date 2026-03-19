@@ -410,7 +410,7 @@ func topologicalSort(digraph map[string][]string) ([]string, error) {
 	visit = func(u string) {
 		if temporaryMark[u] {
 			acyclic = false
-		} else if !(temporaryMark[u] || permanentMark[u]) {
+		} else if !temporaryMark[u] && !permanentMark[u] {
 			temporaryMark[u] = true
 			for _, v := range digraph[u] {
 				visit(v)

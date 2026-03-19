@@ -14,7 +14,12 @@ func main() {
 	if err != nil {
 		log.Fatal("Error listening:", err)
 	}
-	defer listener.Close()
+	defer func() {
+		err := listener.Close()
+		if err != nil {
+			log.Println("Error closing listener", err)
+		}
+	}()
 	fmt.Println("READY")
 
 	for {
@@ -38,7 +43,12 @@ type Response struct {
 }
 
 func handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		err := conn.Close()
+		if err != nil {
+			log.Println("Error closing connection", err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
