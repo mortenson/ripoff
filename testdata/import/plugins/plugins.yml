@@ -4,24 +4,9 @@ plugins:
     address: localhost:6767
     valueFuncs: [sayHello]
 rows:
-  uuid_users:uuid(fooBar):
+  users:uuid(fooBar):
     email: foobar@example.com
     name: sayHello(World)
-  uuid_users:uuid(smorty):
+  users:uuid(smorty):
     email: smorty@example.com
-    name: sayHello(Foo)
-  uuid_users:uuid(smorty2):
-    email: smorty2@example.com
-    name: sayHello(Foo)
-  uuid_users:uuid(smorty3):
-    email: smorty3@example.com
-    name: sayHello(Foo)
-  uuid_users:uuid(smorty4):
-    email: smorty4@example.com
-    name: sayHello(Foo)
-  uuid_users:uuid(smorty5):
-    email: smorty5@example.com
-    name: sayHello(Foo)
-  uuid_users:uuid(smorty6):
-    email: smorty6@example.com
     name: sayHello(Foo)

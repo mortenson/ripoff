@@ -7,6 +7,7 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -26,7 +27,7 @@ func (m *PluginManager) Close() {
 		conn.Close()
 	}
 	for _, cmd := range m.spawnedCommands {
-		cmd.Process.Kill()
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
 
@@ -45,6 +46,45 @@ type Response struct {
 	Value string `json:"value"`
 }
 
+func spawn(command []string) (*exec.Cmd, error) {
+	commandArgs := []string{}
+	if len(command) > 1 {
+		commandArgs = command[1:]
+	}
+	cmd := exec.Command(command[0], commandArgs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	err = cmd.Start()
+	if err != nil {
+		return nil, err
+	}
+	scanner := bufio.NewScanner(stdout)
+	scanner.Scan()
+	line := scanner.Text()
+	// Set deadline for outputting READY message
+	timer := time.AfterFunc(5*time.Second, func() {
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	})
+	if !strings.Contains(string(line), "READY") {
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		return nil, fmt.Errorf("Plugin command '%s' failed to output READY. Got: '%s' instead", strings.Join(command, " "), line)
+	}
+	// Stop the timeout kill
+	timer.Stop()
+	return cmd, nil
+}
+
+func connect(address string) (net.Conn, error) {
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
 func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 	plugin, hasPlugin := m.valueFuncMap[valueFunc]
 	if !hasPlugin {
@@ -53,29 +93,12 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 	conn, ok := m.connections[valueFunc]
 	// Attempt to start process and wait for port to open
 	if !ok {
-		commandArgs := []string{}
-		if len(plugin.Command) > 1 {
-			commandArgs = plugin.Command[1:]
-		}
-		cmd := exec.Command(plugin.Command[0], commandArgs...)
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			return "", err
-		}
-		err = cmd.Start()
+		cmd, err := spawn(plugin.Command)
 		if err != nil {
 			return "", err
 		}
 		m.spawnedCommands = append(m.spawnedCommands, cmd)
-		// Wait for plugin to be ready
-		scanner := bufio.NewScanner(stdout)
-		scanner.Scan()
-		line := scanner.Text()
-		// Note that there's no timeout here, which isn't great
-		if !strings.Contains(string(line), "READY") {
-			return "", fmt.Errorf("Plugin command '%s' failed to output READY. Got: '%s' instead", strings.Join(plugin.Command, " "), line)
-		}
-		conn, err = net.Dial("tcp", plugin.Address)
+		conn, err = connect(plugin.Address)
 		if err != nil {
 			return "", err
 		}

@@ -47,11 +47,11 @@ func runTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir string) {
 	validationFile, err := os.ReadFile(path.Join(testDir, "validate.sql"))
 	if err == nil {
 		row := tx.QueryRow(ctx, string(validationFile))
-		var success int
+		var success bool
 		var debug string
 		err := row.Scan(&success, &debug)
 		require.NoError(t, err)
-		if success != 1 {
+		if !success {
 			t.Fatalf("Validation failed with debug content: %s", debug)
 		}
 	}
