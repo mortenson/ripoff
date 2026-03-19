@@ -14,8 +14,15 @@ import (
 
 type Row map[string]interface{}
 
+type RipoffPlugin struct {
+	Command    []string `yaml:"command"`
+	Address    string   `yaml:"address"`
+	ValueFuncs []string `yaml:"valueFuncs"`
+}
+
 type RipoffFile struct {
-	Rows map[string]Row `yaml:"rows"`
+	Plugins map[string]RipoffPlugin `yaml:"plugins"`
+	Rows    map[string]Row          `yaml:"rows"`
 }
 
 var funcMap = template.FuncMap{
@@ -110,10 +117,14 @@ func RipoffFromDirectory(dir string, enums EnumValuesResult) (RipoffFile, error)
 	}
 
 	totalRipoff := RipoffFile{
-		Rows: map[string]Row{},
+		Rows:    map[string]Row{},
+		Plugins: map[string]RipoffPlugin{},
 	}
 
 	for _, ripoff := range allRipoffs {
+		for k, v := range ripoff.Plugins {
+			totalRipoff.Plugins[k] = v
+		}
 		err = concatRows(templates, totalRipoff.Rows, ripoff.Rows, enums)
 		if err != nil {
 			return RipoffFile{}, err

@@ -47,11 +47,11 @@ func runTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir string) {
 	validationFile, err := os.ReadFile(path.Join(testDir, "validate.sql"))
 	if err == nil {
 		row := tx.QueryRow(ctx, string(validationFile))
-		var success int
+		var success bool
 		var debug string
 		err := row.Scan(&success, &debug)
 		require.NoError(t, err)
-		if success != 1 {
+		if !success {
 			t.Fatalf("Validation failed with debug content: %s", debug)
 		}
 	}
@@ -64,10 +64,11 @@ func TestRipoff(t *testing.T) {
 	}
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, envUrl)
-	if err != nil {
+	require.NoError(t, err)
+	defer func() {
+		err := conn.Close(ctx)
 		require.NoError(t, err)
-	}
-	defer conn.Close(ctx)
+	}()
 
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "testdata", "import")
