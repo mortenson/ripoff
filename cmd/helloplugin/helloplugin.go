@@ -63,16 +63,22 @@ func handleConnection(conn net.Conn) {
 			os.Exit(0)
 			return
 		}
-		if r.ValueFunc != "sayHello" {
-			log.Println("Unknown value func:", r.ValueFunc)
-			return
-		}
 		if len(r.Args) == 0 {
 			log.Println("No args provided")
 			return
 		}
+		var value string
+		switch r.ValueFunc {
+		case "sayHello":
+			value = fmt.Sprintf("Hello %s", r.Args[0])
+		case "sayGoodbye":
+			value = fmt.Sprintf("Goodbye %s", r.Args[0])
+		default:
+			log.Println("Unknown value func:", r.ValueFunc)
+			return
+		}
 		resp, err := json.Marshal(Response{
-			Value: fmt.Sprintf("Hello %s", r.Args[0]),
+			Value: value,
 		})
 		if err != nil {
 			log.Println("Could not marshal message:", r)

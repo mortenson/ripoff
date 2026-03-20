@@ -15,11 +15,11 @@ import (
 type PluginManager struct {
 	valueFuncMap    map[string]RipoffPlugin
 	spawnedCommands []*exec.Cmd
-	connections     map[string]net.Conn
+	addressToConn   map[string]net.Conn
 }
 
 func (m *PluginManager) Close() {
-	for _, conn := range m.connections {
+	for _, conn := range m.addressToConn {
 		message, _ := json.Marshal(Request{
 			Type: "exit",
 		})
@@ -105,7 +105,7 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 	if !hasPlugin {
 		return "", fmt.Errorf("plugin for valueFunc %s is not defined", valueFunc)
 	}
-	conn, ok := m.connections[valueFunc]
+	conn, ok := m.addressToConn[plugin.Address]
 	// Attempt to start process and wait for port to open
 	if !ok {
 		cmd, err := spawn(plugin.Command)
@@ -117,7 +117,7 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		m.connections[valueFunc] = conn
+		m.addressToConn[plugin.Address] = conn
 	}
 	// Send message to open TCP socket
 	err := conn.SetReadDeadline(time.Now().Add(time.Second))
@@ -152,7 +152,7 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 func NewPluginManager(plugins map[string]RipoffPlugin) (*PluginManager, error) {
 	m := &PluginManager{
 		valueFuncMap:    map[string]RipoffPlugin{},
-		connections:     map[string]net.Conn{},
+		addressToConn:   map[string]net.Conn{},
 		spawnedCommands: []*exec.Cmd{},
 	}
 	for pluginName, plugin := range plugins {

@@ -2,11 +2,11 @@ plugins:
   helloplugin:
     command: [go, run, cmd/helloplugin/helloplugin.go]
     address: localhost:6767
-    valueFuncs: [sayHello]
+    valueFuncs: [sayHello, sayGoodbye]
 rows:
   users:uuid(fooBar):
     email: foobar@example.com
     name: sayHello(World)
   users:uuid(smorty):
     email: smorty@example.com
-    name: sayHello(Foo)
+    name: sayGoodbye(Moon)
