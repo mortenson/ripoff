@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"path"
@@ -24,7 +23,6 @@ func errAttr(err error) slog.Attr {
 func confirmPluginsSafe(plugins map[string]ripoff.RipoffPlugin) {
 	consentFile, err := os.ReadFile("/tmp/ripoff-consent.txt")
 	if err != nil && !os.IsNotExist(err) {
-		log.Print(os.ErrNotExist.Error())
 		slog.Error("Could not read from consent file", errAttr(err))
 		os.Exit(1)
 	}
