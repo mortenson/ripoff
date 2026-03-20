@@ -135,32 +135,35 @@ In the future, additional flags may be added to allow you to include tables, add
 
 ## Plugins
 
-If you would like to implement your own `valueFuncs`, you can do so by writing a ripoff plugin.
-
-Plugins are local unauthenticated TCP servers that consume and emit newline-separated JSON messages from ripoff.
+If you would like to implement your own `valueFuncs`, you can do so by writing a ripoff plugin, which is a local TCP server that sends/recieves JSON.
 
 ### Writing a plugin
 
-Plugins must listen to a local TCP port, sending and receiving JSON messages with ripoff.
+Plugins must meet the following requirements:
 
-On startup, plugins must output the string `READY` in its first line of output to indicate to ripoff that it is ready to receive TCP messges.
+- Listen to a local TCP port
+- Consume newline-separated JSON messages, which come in as a stream
+- Output newline-separated JSON responses
+- Ouput `READY` in the first line of standard output when the plugin is ready for TCP connections
 
-Each incoming message will be a single line of JSON in the following types:
+Each incoming message will be a single line of JSON of the following shapes:
 
-#### Return a value
+#### valueFunc
 
 Your plugin must process an arbitrary `valueFunc` and return a string value. You can decide how to handle functions you do not expect/provide, by either returning an empty value or disconnecting the client.
+
+The `id` field is used to support unordered stream messages, so you can return responses at any time and in any order as long as they have the same `id` as the relevant request.
 
 Message from ripoff:
 
 ```json
-{"type": "valueFunc", "valueFunc": "someFuncName", "args": ["some", "argument", "list"]}
+{"id": "some-id", "type": "valueFunc", "valueFunc": "someFuncName", "args": ["some", "argument", "list"]}
 ```
 
 Response from your TCP server:
 
 ```json
-{"value": "someString"}
+{"id": "the-same-id-from-the-request", "value": "someString"}
 ```
 
 #### Example

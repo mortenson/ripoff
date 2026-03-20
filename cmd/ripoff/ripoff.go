@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"path"
+	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -17,9 +21,51 @@ func errAttr(err error) slog.Attr {
 	return slog.Any("error", err)
 }
 
+func confirmPluginsSafe(plugins map[string]ripoff.RipoffPlugin) {
+	consentFile, err := os.ReadFile("/tmp/ripoff-consent.txt")
+	if err != nil && !os.IsNotExist(err) {
+		log.Print(os.ErrNotExist.Error())
+		slog.Error("Could not read from consent file", errAttr(err))
+		os.Exit(1)
+	}
+	consentFileLines := strings.Split(string(consentFile), "\n")
+	scanner := bufio.NewScanner(os.Stdin)
+	newConsentLines := []string{}
+	for _, plugin := range plugins {
+		cmdJoined := strings.Join(append([]string{plugin.Address, " -> "}, plugin.Command...), " ")
+		if !slices.Contains(consentFileLines, cmdJoined) {
+			newConsentLines = append(newConsentLines, cmdJoined)
+		}
+	}
+	if len(newConsentLines) > 0 {
+		fmt.Printf("You have not run these ripoff plugins before, please confirm that the following commands are safe to run on your machine: \n")
+		fmt.Println()
+		for _, consentLine := range newConsentLines {
+			fmt.Printf("	%s\n", consentLine)
+		}
+		fmt.Println()
+		fmt.Println("Run the above? (Y/N)")
+		scanner.Scan()
+		input := scanner.Text()
+		if input == "y" || input == "Y" {
+			consentFileLines = append(consentFileLines, newConsentLines...)
+			err = os.WriteFile("/tmp/ripoff-consent.txt", []byte(strings.Join(consentFileLines, "\n")), 0644)
+			if err != nil {
+				slog.Error("Could not append to the consent file", errAttr(err))
+				os.Exit(1)
+			}
+			fmt.Println("Proceeding...")
+		} else {
+			fmt.Println("ABORT")
+			os.Exit(1)
+		}
+	}
+}
+
 func main() {
 	verbosePtr := flag.Bool("v", false, "enable verbose output")
 	softPtr := flag.Bool("s", false, "do not commit generated queries")
+	maxConcurrencyPtr := flag.Int("c", ripoff.DEFAULT_MAX_CONCURRENCY, "maximum number of rows to generate queries for at one time. defaults at 1000")
 	flag.Parse()
 
 	if *verbosePtr {
@@ -77,7 +123,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = ripoff.RunRipoff(ctx, tx, totalRipoff)
+	if len(totalRipoff.Plugins) > 0 {
+		confirmPluginsSafe(totalRipoff.Plugins)
+	}
+
+	err = ripoff.RunRipoff(ctx, tx, totalRipoff, *maxConcurrencyPtr)
 	if err != nil {
 		slog.Error("Could not run ripoff", errAttr(err))
 		os.Exit(1)

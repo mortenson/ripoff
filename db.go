@@ -20,8 +20,10 @@ import (
 	"github.com/tj/go-naturaldate"
 )
 
+const DEFAULT_MAX_CONCURRENCY = 1000
+
 // Runs ripoff from start to finish, without committing the transaction.
-func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
+func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile, maxConcurrency int) error {
 	manager, err := NewPluginManager(ctx, totalRipoff.Plugins)
 	if err != nil {
 		return err
@@ -33,7 +35,7 @@ func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
 		return err
 	}
 
-	queries, err := buildQueriesForRipoff(manager, primaryKeys, totalRipoff)
+	queries, err := buildQueriesForRipoff(maxConcurrency, manager, primaryKeys, totalRipoff)
 	if err != nil {
 		return err
 	}
@@ -269,7 +271,7 @@ func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, row
 }
 
 // Returns a sorted array of queries to run based on a given ripoff file.
-func buildQueriesForRipoff(manager *PluginManager, primaryKeys PrimaryKeysResult, totalRipoff RipoffFile) ([]string, error) {
+func buildQueriesForRipoff(maxConcurrency int, manager *PluginManager, primaryKeys PrimaryKeysResult, totalRipoff RipoffFile) ([]string, error) {
 	dependencyGraph := map[string][]string{}
 	queries := map[string]string{}
 
@@ -279,7 +281,6 @@ func buildQueriesForRipoff(manager *PluginManager, primaryKeys PrimaryKeysResult
 	}
 
 	// Build queries.
-	const maxConcurrency = 1000
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, maxConcurrency)
 	type rowChanItem struct {
