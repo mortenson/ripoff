@@ -22,7 +22,7 @@ import (
 
 // Runs ripoff from start to finish, without committing the transaction.
 func RunRipoff(ctx context.Context, tx pgx.Tx, totalRipoff RipoffFile) error {
-	manager, err := NewPluginManager(totalRipoff.Plugins)
+	manager, err := NewPluginManager(ctx, totalRipoff.Plugins)
 	if err != nil {
 		return err
 	}

@@ -6,4 +6,4 @@ plugins:
 rows:
   unused:
     template: template_user.yml
-    numUsers: 500
+    numUsers: 1000
