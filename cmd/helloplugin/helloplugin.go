@@ -32,12 +32,14 @@ func main() {
 }
 
 type Request struct {
+	Id        string   `json:"id"`
 	Type      string   `json:"type"`
 	ValueFunc string   `json:"valueFunc"`
 	Args      []string `json:"args"`
 }
 
 type Response struct {
+	Id    string `json:"id"`
 	Value string `json:"value"`
 }
 
@@ -73,6 +75,7 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 		resp, err := json.Marshal(Response{
+			Id:    r.Id,
 			Value: value,
 		})
 		if err != nil {

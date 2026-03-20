@@ -9,17 +9,22 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Request struct {
+	Id        string   `json:"id"`
 	Type      string   `json:"type"`
 	ValueFunc string   `json:"valueFunc"`
 	Args      []string `json:"args"`
 }
 
 type Response struct {
+	Id    string `json:"id"`
 	Value string `json:"value"`
 }
 
@@ -109,6 +114,32 @@ func connect(address string) (net.Conn, error) {
 }
 
 func (m *PluginManager) Run(ctx context.Context) {
+	type idMapTuple struct {
+		channel chan PluginResponse
+		id      string
+	}
+	var idMap sync.Map
+	// todo: cancellation?
+	for _, conn := range m.addressToConn {
+		go func() {
+			scanner := bufio.NewScanner(conn)
+			for scanner.Scan() {
+				line := scanner.Bytes()
+				response := Response{}
+				err := json.Unmarshal(line, &response)
+				if err != nil {
+					slog.Error("Unable to parse response", slog.Any("error", err))
+					continue
+				}
+				pluginResponse, ok := idMap.Load(response.Id)
+				if !ok {
+					slog.Error("No plugin channel found in map for response ID", slog.Any("line", line))
+					continue
+				}
+				pluginResponse.(chan PluginResponse) <- PluginResponse{response: response, err: nil}
+			}
+		}()
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -119,13 +150,10 @@ func (m *PluginManager) Run(ctx context.Context) {
 				call.responseChan <- PluginResponse{err: fmt.Errorf("connection for plugin %s does not exist", strings.Join(call.plugin.Command, " "))}
 				return
 			}
-			// Send message to open TCP socket
-			err := conn.SetReadDeadline(time.Now().Add(time.Second * 1))
-			if err != nil {
-				slog.Error("Could not set read deadline for plugin connection", slog.Any("error", err))
-			}
-			scanner := bufio.NewScanner(conn)
+			id := uuid.New().String()
+			idMap.Store(id, call.responseChan)
 			message, err := json.Marshal(Request{
+				Id:        id,
 				Type:      "valueFunc",
 				ValueFunc: call.valueFunc,
 				Args:      call.args,
@@ -139,18 +167,6 @@ func (m *PluginManager) Run(ctx context.Context) {
 				call.responseChan <- PluginResponse{err: err}
 				return
 			}
-			if !scanner.Scan() {
-				call.responseChan <- PluginResponse{err: fmt.Errorf("plugin command '%s' failed to respond to TCP message: %v", strings.Join(call.plugin.Command, " "), scanner.Err())}
-				return
-			}
-			line := scanner.Bytes()
-			response := Response{}
-			err = json.Unmarshal(line, &response)
-			if err != nil {
-				call.responseChan <- PluginResponse{err: err}
-				return
-			}
-			call.responseChan <- PluginResponse{response: response, err: nil}
 		}
 	}
 }
