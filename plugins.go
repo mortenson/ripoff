@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"os/exec"
@@ -15,23 +16,9 @@ import (
 type PluginManager struct {
 	valueFuncMap    map[string]RipoffPlugin
 	spawnedCommands []*exec.Cmd
-	addressToConn   map[string]net.Conn
 }
 
 func (m *PluginManager) Close() {
-	for _, conn := range m.addressToConn {
-		message, _ := json.Marshal(Request{
-			Type: "exit",
-		})
-		_, err := conn.Write(append(message, '\n'))
-		if err != nil {
-			slog.Error("Could not write exit message to plugn connection", slog.Any("error", err))
-		}
-		err = conn.Close()
-		if err != nil {
-			slog.Error("Could not close plugin connection", slog.Any("error", err))
-		}
-	}
 	for _, cmd := range m.spawnedCommands {
 		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		if err != nil {
@@ -105,22 +92,14 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 	if !hasPlugin {
 		return "", fmt.Errorf("plugin for valueFunc %s is not defined", valueFunc)
 	}
-	conn, ok := m.addressToConn[plugin.Address]
-	// Attempt to start process and wait for port to open
-	if !ok {
-		cmd, err := spawn(plugin.Command)
-		if err != nil {
-			return "", err
-		}
-		m.spawnedCommands = append(m.spawnedCommands, cmd)
-		conn, err = connect(plugin.Address)
-		if err != nil {
-			return "", err
-		}
-		m.addressToConn[plugin.Address] = conn
+	// Make new connection
+	conn, err := connect(plugin.Address)
+	if err != nil {
+		return "", err
 	}
+	defer conn.Close()
 	// Send message to open TCP socket
-	err := conn.SetReadDeadline(time.Now().Add(time.Second))
+	err = conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	if err != nil {
 		slog.Error("Could not set read deadline for plugin connection", slog.Any("error", err))
 	}
@@ -137,6 +116,7 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	log.Print("go mesage ", string(message))
 	if !scanner.Scan() {
 		return "", fmt.Errorf("plugin command '%s' failed to response to TCP message: %v", strings.Join(plugin.Command, " "), scanner.Err())
 	}
@@ -152,7 +132,6 @@ func (m *PluginManager) Call(valueFunc string, args ...string) (string, error) {
 func NewPluginManager(plugins map[string]RipoffPlugin) (*PluginManager, error) {
 	m := &PluginManager{
 		valueFuncMap:    map[string]RipoffPlugin{},
-		addressToConn:   map[string]net.Conn{},
 		spawnedCommands: []*exec.Cmd{},
 	}
 	for pluginName, plugin := range plugins {
@@ -166,6 +145,13 @@ func NewPluginManager(plugins map[string]RipoffPlugin) (*PluginManager, error) {
 			}
 			m.valueFuncMap[valueFunc] = plugin
 		}
+	}
+	for _, plugin := range plugins {
+		cmd, err := spawn(plugin.Command)
+		if err != nil {
+			return nil, err
+		}
+		m.spawnedCommands = append(m.spawnedCommands, cmd)
 	}
 	return m, nil
 }

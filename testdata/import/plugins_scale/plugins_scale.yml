@@ -1,0 +1,9 @@
+plugins:
+  helloplugin:
+    command: [go, run, cmd/helloplugin/helloplugin.go]
+    address: localhost:6767
+    valueFuncs: [sayHello, sayGoodbye]
+rows:
+  unused:
+    template: template_user.yml
+    numUsers: 500

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 )
 
 func main() {
@@ -51,44 +50,39 @@ func handleConnection(conn net.Conn) {
 	}()
 
 	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		message := scanner.Bytes()
-		r := Request{}
-		err := json.Unmarshal(message, &r)
-		if err != nil {
-			log.Println("Error parsing body:", err)
-			return
-		}
-		if r.Type == "exit" {
-			os.Exit(0)
-			return
-		}
-		if len(r.Args) == 0 {
-			log.Println("No args provided")
-			return
-		}
-		var value string
-		switch r.ValueFunc {
-		case "sayHello":
-			value = fmt.Sprintf("Hello %s", r.Args[0])
-		case "sayGoodbye":
-			value = fmt.Sprintf("Goodbye %s", r.Args[0])
-		default:
-			log.Println("Unknown value func:", r.ValueFunc)
-			return
-		}
-		resp, err := json.Marshal(Response{
-			Value: value,
-		})
-		if err != nil {
-			log.Println("Could not marshal message:", r)
-			return
-		}
-		_, err = conn.Write(append(resp, '\n'))
-		if err != nil {
-			log.Println("Could not send message:", r.ValueFunc)
-			return
-		}
+	scanner.Scan()
+	message := scanner.Bytes()
+	r := Request{}
+	err := json.Unmarshal(message, &r)
+	if err != nil {
+		log.Println("Error parsing body:", err)
+		return
+	}
+	if len(r.Args) == 0 {
+		log.Println("No args provided")
+		return
+	}
+	var value string
+	switch r.ValueFunc {
+	case "sayHello":
+		value = fmt.Sprintf("Hello %s", r.Args[0])
+	case "sayGoodbye":
+		value = fmt.Sprintf("Goodbye %s", r.Args[0])
+	default:
+		log.Println("Unknown value func:", r.ValueFunc)
+		return
+	}
+	resp, err := json.Marshal(Response{
+		Value: value,
+	})
+	if err != nil {
+		log.Println("Could not marshal message:", r)
+		return
+	}
+	_, err = conn.Write(append(resp, '\n'))
+	if err != nil {
+		log.Println("Could not send message:", r.ValueFunc)
+		return
 	}
 	if err := scanner.Err(); err != nil {
 		log.Println("Scanner error:", err)

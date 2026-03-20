@@ -141,7 +141,7 @@ Plugins are local unauthenticated TCP servers that consume and emit newline-sepa
 
 ### Writing a plugin
 
-Plugins must listen to a local TCP port and provide a TCP stream (loop of receiving and sending messages) to clients.
+Plugins must listen to a local TCP port, sending and receiving JSON messages with ripoff.
 
 On startup, plugins must output the string `READY` in its first line of output to indicate to ripoff that it is ready to receive TCP messges.
 
@@ -163,23 +163,15 @@ Response from your TCP server:
 {"value": "someString"}
 ```
 
-#### Exit your process
-
-Ripoff will send a kill signal to your process, but if you'd like to clean up before that an exit message will be sent beforehand.
-
-Request message:
-
-```json
-{"type": "exit"}
-```
-
 #### Example
 
 An example plugin can be found at `cmd/helloplugin/helloplugin.go`. although TCP servers in other languages may be much easier to implement.
 
 ### Using a plugin
 
-Plugins are defined in your ripoff files, which instruct ripoff to spawn a process to start your TCP server, then later connect to it with a single TCP stream. Here's an example from ripoff's tests:
+Plugins are defined in your ripoff files, which instruct ripoff to spawn a process to start your TCP server.
+
+Here's an example from ripoff's tests:
 
 ```yml
 # A list of plugins to register with ripoff.

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/brianvoe/gofakeit/v7"
@@ -163,10 +164,11 @@ func prepareValue(manager *PluginManager, rawValue string) (string, error) {
 	return fakerResult, nil
 }
 
-func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, rowId string, row Row, dependencyGraph map[string][]string) (string, error) {
+func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, rowId string, row Row) (string, []string, error) {
+	dependencyResult := []string{}
 	parts := strings.Split(rowId, ":")
 	if len(parts) < 2 {
-		return "", fmt.Errorf("invalid id: %s", rowId)
+		return "", dependencyResult, fmt.Errorf("invalid id: %s", rowId)
 	}
 	table := parts[0]
 	primaryKeysForTable, hasPrimaryKeysForTable := primaryKeys[table]
@@ -210,10 +212,10 @@ func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, row
 			case []string:
 				dependencies = v
 			default:
-				return "", fmt.Errorf("cannot parse ~dependencies value in row %s", rowId)
+				return "", dependencyResult, fmt.Errorf("cannot parse ~dependencies value in row %s", rowId)
 			}
-			dependencyGraph[rowId] = append(dependencyGraph[rowId], dependencies...)
-			dependencyGraph[rowId] = slices.Compact(dependencyGraph[rowId])
+			dependencyResult = append(dependencyResult, dependencies...)
+			dependencyResult = slices.Compact(dependencyResult)
 			continue
 		}
 
@@ -230,14 +232,14 @@ func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, row
 			addEdge := referenceRegex.MatchString(value)
 			// Don't add edges to and from the same row.
 			if addEdge && rowId != value {
-				dependencyGraph[rowId] = append(dependencyGraph[rowId], value)
-				dependencyGraph[rowId] = slices.Compact(dependencyGraph[rowId])
+				dependencyResult = append(dependencyResult, value)
+				dependencyResult = slices.Compact(dependencyResult)
 			}
 
 			columns = append(columns, pq.QuoteIdentifier(column))
 			valuePrepared, err := prepareValue(manager, value)
 			if err != nil {
-				return "", err
+				return "", dependencyResult, err
 			}
 			// Assume this column is the primary key.
 			if rowId == value && onConflictColumn == "" {
@@ -249,7 +251,7 @@ func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, row
 	}
 
 	if onConflictColumn == "" {
-		return "", fmt.Errorf("cannot determine column to conflict with for: %s, saw %s", rowId, row)
+		return "", dependencyResult, fmt.Errorf("cannot determine column to conflict with for: %s, saw %s", rowId, row)
 	}
 
 	// Extremely smart query builder.
@@ -263,7 +265,7 @@ func buildQueryForRow(manager *PluginManager, primaryKeys PrimaryKeysResult, row
 		strings.Join(values, ","),
 		onConflictColumn,
 		strings.Join(setStatements, ","),
-	), nil
+	), dependencyResult, nil
 }
 
 // Returns a sorted array of queries to run based on a given ripoff file.
@@ -277,12 +279,38 @@ func buildQueriesForRipoff(manager *PluginManager, primaryKeys PrimaryKeysResult
 	}
 
 	// Build queries.
+	const maxConcurrency = 1000
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, maxConcurrency)
+	type rowChanItem struct {
+		rowId        string
+		query        string
+		dependencies []string
+		err          error
+	}
+	rowChan := make(chan rowChanItem, len(totalRipoff.Rows))
 	for rowId, row := range totalRipoff.Rows {
-		query, err := buildQueryForRow(manager, primaryKeys, rowId, row, dependencyGraph)
-		if err != nil {
-			return []string{}, err
+		semaphore <- struct{}{}
+		wg.Add(1)
+		go func(rowId string, row Row) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+			query, dependencies, err := buildQueryForRow(manager, primaryKeys, rowId, row)
+			rowChan <- rowChanItem{rowId, query, dependencies, err}
+		}(rowId, row)
+	}
+
+	go func() {
+		wg.Wait()
+		close(rowChan)
+	}()
+
+	for rowItem := range rowChan {
+		if rowItem.err != nil {
+			return []string{}, rowItem.err
 		}
-		queries[rowId] = query
+		dependencyGraph[rowItem.rowId] = rowItem.dependencies
+		queries[rowItem.rowId] = rowItem.query
 	}
 
 	// Sort and reverse the graph, so queries are in order of least (hopefully none) to most dependencies.
