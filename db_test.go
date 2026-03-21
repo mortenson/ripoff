@@ -23,10 +23,10 @@ func runTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir string) {
 	require.NoError(t, err)
 	totalRipoff, err := RipoffFromDirectory(testDir, enums)
 	require.NoError(t, err)
-	err = RunRipoff(ctx, tx, totalRipoff)
+	err = RunRipoff(ctx, tx, totalRipoff, DEFAULT_MAX_CONCURRENCY)
 	require.NoError(t, err)
 	// Run again to implicitly test upsert behavior.
-	err = RunRipoff(ctx, tx, totalRipoff)
+	err = RunRipoff(ctx, tx, totalRipoff, DEFAULT_MAX_CONCURRENCY)
 	require.NoError(t, err)
 	// Try to verify that the number of generated rows matches the ripoff.
 	tableCount := map[string]int{}

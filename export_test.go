@@ -48,7 +48,7 @@ func runExportTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir str
 	_, err = tx.Exec(ctx, string(truncateFile))
 	require.NoError(t, err)
 	// Run generated ripoff.
-	err = RunRipoff(ctx, tx, ripoffFile)
+	err = RunRipoff(ctx, tx, ripoffFile, DEFAULT_MAX_CONCURRENCY)
 	require.NoError(t, err)
 	// Try to verify that the number of generated rows matches the ripoff.
 	tableCount := map[string]int{}

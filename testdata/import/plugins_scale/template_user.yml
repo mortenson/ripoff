@@ -1,0 +1,6 @@
+rows:
+  {{ range $i, $v := (intSlice .numUsers) }}
+  users:uuid({{ $i }}):
+    email: email({{ $i }})
+    name: sayHello({{ $i }})
+  {{ end }}
