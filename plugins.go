@@ -57,7 +57,6 @@ type PluginManager struct {
 
 // Closes all open connections and kills process group for each plugin command and its children.
 func (m *PluginManager) Close() {
-	close(m.callChan)
 	for _, conn := range m.addressToConn {
 		err := conn.Close()
 		if err != nil {
