@@ -48,8 +48,9 @@ Most valueFuncs allow you to generate random data that's seeded with a static st
 ripoff provides:
 
 - `uuid(seedString)` - generates a v1 UUID
-- `int(seedString)` - generates an integer (note: might be awkward on auto incrementing tables)
-- `naturalDate(human readable text)` - generates a date using syntax defined by [go-naturaldate](https://github.com/tj/go-naturaldate), for example `naturalDate(one day ago)` (note: non-deterministic)
+- `int(seedString) | int(seedString, MAX) | int(seedString, MIN, MAX)` - generates an integer (note: might be awkward on auto incrementing tables).
+- `naturalDate(human readable text) | naturalDate(seedString, text with placeholder)` - generates a date using syntax defined by [go-naturaldate](https://github.com/tj/go-naturaldate), for example `naturalDate(one day ago)` (note: non-deterministic).
+  - If a `seedString` is provided, you can use the syntax `rMIN-MAX` to generate random values within a half-open range, ex: `naturalDate(seed, r1-5 days ago)`.
 
 and also all functions from [gofakeit](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions) that have no arguments and return a string (called in camelcase, ex: `email(seedString)`). For the full list, see `./gofakeit.go`.
 

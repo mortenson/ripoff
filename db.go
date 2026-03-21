@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	randv2 "math/rand/v2"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -119,6 +121,7 @@ func GetEnumValues(ctx context.Context, tx pgx.Tx) (EnumValuesResult, error) {
 
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)
 var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:[a-zA-Z]+\(`)
+var naturalDatePlaceholderRegex = regexp.MustCompile(`r\d+-\d+`)
 
 func prepareValue(manager *PluginManager, rawValue string) (string, error) {
 	valueFuncMatches := valueFuncRegex.FindStringSubmatch(rawValue)
@@ -137,7 +140,9 @@ func prepareValue(manager *PluginManager, rawValue string) (string, error) {
 	h := sha256.New()
 	h.Write([]byte(value))
 	hashBytes := h.Sum(nil)
+	// Note: for backwards compatability we don't want to migrate fully to v2
 	randSeed := rand.New(rand.NewSource(int64(binary.BigEndian.Uint64(hashBytes))))
+	randv2Seed := randv2.New(randv2.NewChaCha8(sha256.Sum256([]byte(value))))
 
 	// Check for methods provided by ripoff.
 	switch methodName {
@@ -148,10 +153,43 @@ func prepareValue(manager *PluginManager, rawValue string) (string, error) {
 		}
 		return randomId.String(), nil
 	case "int":
-		return fmt.Sprint(randSeed.Int()), nil
+		if len(valueParts) == 3 {
+			min, err := strconv.Atoi(valueParts[1])
+			if err != nil {
+				return "", err
+			}
+			max, err := strconv.Atoi(valueParts[2])
+			if err != nil {
+				return "", err
+			}
+			return strconv.Itoa(randv2Seed.IntN(max-min) + min), nil
+		} else if len(valueParts) == 2 {
+			max, err := strconv.Atoi(valueParts[1])
+			if err != nil {
+				return "", err
+			}
+			return strconv.Itoa(randv2Seed.IntN(max)), nil
+		} else {
+			return strconv.Itoa(randSeed.Int()), nil
+		}
 	case "literal":
 		return value, nil
 	case "naturalDate":
+		// Uses seeding/replacement syntax
+		if len(valueParts) == 2 {
+			value = naturalDatePlaceholderRegex.ReplaceAllStringFunc(valueParts[1], func(s string) string {
+				split := strings.Split(s[1:], "-")
+				min, err := strconv.Atoi(split[0])
+				if err != nil {
+					return s
+				}
+				max, err := strconv.Atoi(split[1])
+				if err != nil {
+					return s
+				}
+				return strconv.Itoa(randv2Seed.IntN(max-min) + min)
+			})
+		}
 		parsed, err := naturaldate.Parse(value, time.Now().UTC())
 		return parsed.Format(time.RFC3339), err
 	}
