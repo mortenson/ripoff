@@ -21,7 +21,12 @@ func errAttr(err error) slog.Attr {
 }
 
 func confirmPluginsSafe(plugins map[string]ripoff.RipoffPlugin) {
-	consentFile, err := os.ReadFile("/tmp/ripoff-consent.txt")
+	baseDir, err := os.UserHomeDir()
+	if err != nil {
+		baseDir = os.TempDir()
+	}
+	consentFilePath := path.Join(baseDir, ".ripoff-consent")
+	consentFile, err := os.ReadFile(consentFilePath)
 	if err != nil && !os.IsNotExist(err) {
 		slog.Error("Could not read from consent file", errAttr(err))
 		os.Exit(1)
@@ -47,7 +52,7 @@ func confirmPluginsSafe(plugins map[string]ripoff.RipoffPlugin) {
 		input := scanner.Text()
 		if input == "y" || input == "Y" {
 			consentFileLines = append(consentFileLines, newConsentLines...)
-			err = os.WriteFile("/tmp/ripoff-consent.txt", []byte(strings.Join(consentFileLines, "\n")), 0644)
+			err = os.WriteFile(consentFilePath, []byte(strings.Join(consentFileLines, "\n")), 0644)
 			if err != nil {
 				slog.Error("Could not append to the consent file", errAttr(err))
 				os.Exit(1)
@@ -64,6 +69,7 @@ func main() {
 	verbosePtr := flag.Bool("v", false, "enable verbose output")
 	softPtr := flag.Bool("s", false, "do not commit generated queries")
 	maxConcurrencyPtr := flag.Int("c", ripoff.DEFAULT_MAX_CONCURRENCY, "maximum number of rows to generate queries for at one time. defaults at 1000")
+	unsafePluginPtr := flag.Bool("u", false, "execute new plugin commands without prompting. only for use in CI or trusted environments")
 	flag.Parse()
 
 	if *verbosePtr {
@@ -121,7 +127,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(totalRipoff.Plugins) > 0 {
+	if !*unsafePluginPtr && len(totalRipoff.Plugins) > 0 {
 		confirmPluginsSafe(totalRipoff.Plugins)
 	}
 
