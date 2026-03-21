@@ -130,7 +130,7 @@ func prepareValue(manager *PluginManager, rawValue string) (string, error) {
 	}
 	methodName := valueFuncMatches[1]
 	value := valueFuncMatches[2]
-	valueParts := strings.Split(strings.ReplaceAll(valueFuncMatches[2], " ", ""), ",")
+	valueParts := strings.Split(strings.ReplaceAll(valueFuncMatches[2], ", ", ","), ",")
 
 	if manager.Supports(methodName) {
 		return manager.Call(methodName, valueParts...)
