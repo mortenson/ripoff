@@ -28,8 +28,7 @@ func confirmPluginsSafe(plugins map[string]ripoff.RipoffPlugin) {
 	consentFilePath := path.Join(baseDir, ".ripoff-consent")
 	consentFile, err := os.ReadFile(consentFilePath)
 	if err != nil && !os.IsNotExist(err) {
-		slog.Error("Could not read from consent file", errAttr(err))
-		os.Exit(1)
+		slog.Error("Could not read from consent file", errAttr(err), slog.String("filepath", consentFilePath))
 	}
 	consentFileLines := strings.Split(string(consentFile), "\n")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -54,8 +53,7 @@ func confirmPluginsSafe(plugins map[string]ripoff.RipoffPlugin) {
 			consentFileLines = append(consentFileLines, newConsentLines...)
 			err = os.WriteFile(consentFilePath, []byte(strings.Join(consentFileLines, "\n")), 0644)
 			if err != nil {
-				slog.Error("Could not append to the consent file", errAttr(err))
-				os.Exit(1)
+				slog.Error("Could not append to the consent file", errAttr(err), slog.String("filepath", consentFilePath))
 			}
 			fmt.Println("Proceeding...")
 		} else {
