@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -34,16 +35,20 @@ func confirmPluginsSafe(plugins map[string]ripoff.RipoffPlugin) {
 	scanner := bufio.NewScanner(os.Stdin)
 	newConsentLines := []string{}
 	for _, plugin := range plugins {
-		cmdJoined := strings.Join(append([]string{plugin.Address, " -> "}, plugin.Command...), " ")
-		if !slices.Contains(consentFileLines, cmdJoined) {
-			newConsentLines = append(newConsentLines, cmdJoined)
+		cmdJson, err := json.Marshal(plugin)
+		if err != nil {
+			slog.Error("Could not marshal plugin to JSON for consent file", errAttr(err), slog.Any("plugin", plugin))
+			os.Exit(1)
+		}
+		if !slices.Contains(consentFileLines, string(cmdJson)) {
+			newConsentLines = append(newConsentLines, string(cmdJson))
 		}
 	}
 	if len(newConsentLines) > 0 {
-		fmt.Printf("You have not run these ripoff plugins before, please confirm that the following commands are safe to run on your machine: \n")
+		fmt.Printf("You have not run these ripoff plugins before, please confirm that the following plugin configurations/commands are safe to run on your machine: \n")
 		fmt.Println()
-		for _, consentLine := range newConsentLines {
-			fmt.Printf("	%s\n", consentLine)
+		for _, consentPrompt := range newConsentLines {
+			fmt.Printf("	%s\n", consentPrompt)
 		}
 		fmt.Println()
 		fmt.Println("Run the above? (Y/N)")

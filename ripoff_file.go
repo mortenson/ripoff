@@ -17,7 +17,7 @@ type Row map[string]interface{}
 type RipoffPlugin struct {
 	Command    []string `yaml:"command"`
 	Address    string   `yaml:"address"`
-	ValueFuncs []string `yaml:"valueFuncs"`
+	ValueFuncs []string `yaml:"valueFuncs" json:"-"`
 }
 
 type RipoffFile struct {
