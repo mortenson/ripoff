@@ -52,7 +52,7 @@ func runTestData(t *testing.T, ctx context.Context, tx pgx.Tx, testDir string) {
 		err := row.Scan(&success, &debug)
 		require.NoError(t, err)
 		if !success {
-			t.Fatalf("Validation failed with debug content: %s", debug)
+			t.Fatalf("Validation failed in dir %s with debug content: %s", testDir, debug)
 		}
 	}
 }

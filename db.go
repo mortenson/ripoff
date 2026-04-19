@@ -119,7 +119,7 @@ func GetEnumValues(ctx context.Context, tx pgx.Tx) (EnumValuesResult, error) {
 	return allEnumValues, nil
 }
 
-var valueFuncRegex = regexp.MustCompile(`([a-zA-Z]+)\((.*)\)$`)
+var valueFuncRegex = regexp.MustCompile(`([a-zA-Z0-9]+)\((.*)\)$`)
 var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:[a-zA-Z]+\(`)
 var naturalDatePlaceholderRegex = regexp.MustCompile(`r\d+-\d+`)
 
