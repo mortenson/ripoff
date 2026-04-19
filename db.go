@@ -120,7 +120,7 @@ func GetEnumValues(ctx context.Context, tx pgx.Tx) (EnumValuesResult, error) {
 }
 
 var valueFuncRegex = regexp.MustCompile(`([a-zA-Z0-9]+)\((.*)\)$`)
-var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:[a-zA-Z]+\(`)
+var referenceRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+:[a-zA-Z0-9]+\(`)
 var naturalDatePlaceholderRegex = regexp.MustCompile(`r\d+-\d+`)
 
 func prepareValue(manager *PluginManager, rawValue string) (string, error) {
@@ -146,6 +146,12 @@ func prepareValue(manager *PluginManager, rawValue string) (string, error) {
 
 	// Check for methods provided by ripoff.
 	switch methodName {
+	case "uuidv7":
+		randomId, err := NewV7FromReader(randSeed)
+		if err != nil {
+			return "", err
+		}
+		return randomId.String(), nil
 	case "uuid":
 		randomId, err := uuid.NewRandomFromReader(randSeed)
 		if err != nil {

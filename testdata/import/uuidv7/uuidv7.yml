@@ -1,0 +1,9 @@
+rows:
+  users:uuidv7(fooBar):
+    email: foobar@example.com
+    avatar_id: avatars:uuidv7(fooBarAvatar)
+  avatars:uuidv7(fooBarAvatar):
+    url: image.png
+  avatar_modifiers:uuidv7(fooBarAvatar):
+    grayscale: true
+    ~dependencies: [avatars:uuidv7(fooBarAvatar)]
